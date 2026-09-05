@@ -4,107 +4,146 @@ import pandas as pd
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# 1. 페이지 기본 설정 및 제목 표시
+# 1. 페이지 기본 설정 및 시네마 커스텀 CSS (UI/UX 개선)
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="일별 박스오피스 조회",
+    page_title="시네마 박스오피스 대시보드",
     page_icon="🎬",
     layout="wide"
 )
 
-st.title("🎬 일별 박스오피스 조회")
+# 영화관 분위기의 세련된 다크 테마 커스텀 스타일 정의
+st.markdown("""
+<style>
+    /* 전체 배경 및 기본 폰트 색상 */
+    .stApp {
+        background-color: #0E1117;
+        color: #FFFFFF;
+    }
+    
+    /* 헤더 메인 타이틀 스타일 */
+    .main-title {
+        font-size: 2.3rem;
+        font-weight: 800;
+        background: linear-gradient(45deg, #FF4B4B, #FFD700);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* 시네마 스포트라이트 카드 (1위 영화) */
+    .spotlight-card {
+        background: linear-gradient(135deg, #1f1c2c 0%, #928dab 100%);
+        border-radius: 16px;
+        padding: 24px;
+        border: 1px solid #FFD700;
+        box-shadow: 0 8px 32px 0 rgba(255, 215, 0, 0.15);
+        margin-bottom: 25px;
+    }
+    
+    /* 서브헤더 및 섹션 타이틀 */
+    .section-header {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #FFD700;
+        border-left: 4px solid #FF4B4B;
+        padding-left: 10px;
+        margin-top: 20px;
+        margin-bottom: 15px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. 한국 시각(KST: UTC+9) 기준 '어제' 날짜 계산 및 달력 위젯 생성
+# 2. 한국 시각(KST) 기준 날짜 계산 및 달력 위젯
 # -----------------------------------------------------------------------------
-# 배포 서버 시계(UTC)와 한국 시차(+9시간)를 반영하여 한국 시각의 '어제'를 구합니다.
 kst_timezone = datetime.timezone(datetime.timedelta(hours=9))
 now_kst = datetime.datetime.now(kst_timezone)
 yesterday_kst = (now_kst - datetime.timedelta(days=1)).date()
 
-# 달력(Date Input)에서 사용자가 직접 날짜를 선택할 수 있게 합니다.
-# 오늘 및 미래 날짜는 아직 데이터 집계 전이므로 선택 불가능(max_value=yesterday_kst)하도록 설정합니다.
-selected_date = st.date_input(
-    "📅 조회할 날짜를 선택하세요 (최대 어제까지 선택 가능):",
-    value=yesterday_kst,
-    max_value=yesterday_kst,
-    min_value=datetime.date(2004, 1, 1)  # KOBIS 데이터 제공 시작 시점
-)
+# 상단 헤더 영역
+st.markdown('<div class="main-title">🍿 CINEMA BOX OFFICE</div>', unsafe_allow_html=True)
 
-# API 요청용(YYYYMMDD)과 화면 표시용(YYYY년 MM월 DD일) 날짜 문자열 변환
+# 사이드바 / 컨트롤 영역에 날짜 선택 배치
+with st.sidebar:
+    st.header("⚙️ 옵션 및 날짜 선택")
+    selected_date = st.date_input(
+        "📅 조회 날짜 선택 (최대 어제)",
+        value=yesterday_kst,
+        max_value=yesterday_kst,
+        min_value=datetime.date(2004, 1, 1)
+    )
+    st.info("💡 영화진흥위원회(KOBIS) 공식 데이터를 기반으로 제공됩니다.")
+
 target_date_str = selected_date.strftime("%Y%m%d")
 display_date_str = selected_date.strftime("%Y년 %m월 %d일")
 
-st.caption(f"📅 **조회 기준일:** {display_date_str}")
+st.caption(f"🎬 **조회 기준일:** {display_date_str} (한국 시간 기준)")
 
 # -----------------------------------------------------------------------------
-# 3. Streamlit Secrets에서 API 인증키 불러오기
+# 3. Secrets 인증키 확인
 # -----------------------------------------------------------------------------
 if "KOBIS_KEY" not in st.secrets:
     st.error("🔑 API 인증키(KOBIS_KEY)가 비밀 금고(Secrets)에 등록되어 있지 않습니다.")
     st.info(
         "**확인 및 해결 방법:**\n"
-        "1. **Streamlit Cloud 배포 화면:** App settings -> **Secrets** 메뉴로 이동합니다.\n"
-        "2. 아래 형식으로 발급받은 인증키를 입력하고 저장해 주세요.\n"
-        "   ```toml\n"
-        '   KOBIS_KEY = "발급받은_인증키_입력"\n'
-        "   ```\n"
-        "3. **로컬 개발 환경:** 프로젝트 폴더 안 `.streamlit/secrets.toml` 파일에 위 코드를 작성하세요."
+        "1. Streamlit Cloud의 App settings -> Secrets에 `KOBIS_KEY = \"인증키\"`를 등록하세요.\n"
+        "2. 로컬 개발 시 `.streamlit/secrets.toml` 파일에 키를 작성하세요."
     )
     st.stop()
 
 api_key = st.secrets["KOBIS_KEY"]
 
 # -----------------------------------------------------------------------------
-# 4. KOBIS API 데이터 호출 함수 (1시간 동안 결과 기억/캐싱)
-# 선택한 날짜(target_dt)별로 데이터를 1시간(3600초) 동안 저장하여 재요청을 방지합니다.
+# 4. API 데이터 호출 및 캐싱 (단일 일자 & 7일간 데이터)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def fetch_box_office_data(key: str, target_dt: str):
     url = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
-    params = {
-        "key": key,
-        "targetDt": target_dt
-    }
-    
+    params = {"key": key, "targetDt": target_dt}
     try:
         response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()  # HTTP 오류 발생 시 예외 throw
+        response.raise_for_status()
         return response.json(), None
     except requests.exceptions.RequestException as err:
         return None, f"네트워크 통신 오류: {err}"
 
-# 데이터 가져오기 실행
+# 최근 7일간의 박스오피스 데이터를 가져오는 함수 (추세 그래프용)
+@st.cache_data(ttl=3600)
+def fetch_7days_trend_data(key: str, end_date: datetime.date):
+    trend_records = []
+    for i in range(6, -1, -1):  # 6일 전부터 선택일까지
+        day = end_date - datetime.timedelta(days=i)
+        dt_str = day.strftime("%Y%m%d")
+        res, err = fetch_box_office_data(key, dt_str)
+        if res and "boxOfficeResult" in res:
+            daily_list = res["boxOfficeResult"].get("dailyBoxOfficeList", [])
+            for item in daily_list:
+                trend_records.append({
+                    "date": day.strftime("%m/%d"),
+                    "movieNm": item["movieNm"],
+                    "audiCnt": int(item["audiCnt"]),
+                    "rank": int(item["rank"])
+                })
+    return pd.DataFrame(trend_records)
+
+# 선택일 데이터 가져오기
 data, network_error = fetch_box_office_data(api_key, target_date_str)
 
 # -----------------------------------------------------------------------------
-# 5. 예외 및 오류 사항 처리 (한국어 안내)
+# 5. 예외 및 오류 처리
 # -----------------------------------------------------------------------------
-# (1) HTTP 요청 실패 또는 네트워크 오류 발생 시
 if network_error:
     st.error("❌ 박스오피스 데이터를 가져오지 못했습니다.")
-    st.warning(
-        f"**상세 원인:** {network_error}\n\n"
-        "**확인할 사항:**\n"
-        "- 서버 인터넷 연결 상태를 확인해 주세요.\n"
-        "- 영화진흥위원회(KOBIS) 서버가 점검 중인지 확인해 주세요."
-    )
+    st.warning(f"**원인:** {network_error}")
     st.stop()
 
-# (2) API 인증키 오류 등으로 faultInfo 응답이 올 경우 (상태 코드는 200)
 if "faultInfo" in data:
     fault = data["faultInfo"]
     st.error("❌ 영화진흥위원회(KOBIS) API 오류 응답이 도착했습니다.")
-    st.warning(
-        f"**오류 메시지:** {fault.get('message', '알 수 없는 오류')}\n"
-        f"**오류 코드:** {fault.get('errorCode', 'N/A')}\n\n"
-        "**확인할 사항:**\n"
-        "- Streamlit Secrets의 `KOBIS_KEY` 값이 정확하게 입력되었는지 확인하세요.\n"
-        "- 영화진흥위원회 오픈API 포털에서 키 일일 활용 제한량을 초과했는지 확인하세요."
-    )
+    st.warning(f"**오류 메시지:** {fault.get('message', '알 수 없는 오류')}")
     st.stop()
 
-# (3) 응답 데이터에 영화 목록이 없거나 비어 있는 경우
 box_office_result = data.get("boxOfficeResult", {})
 daily_list = box_office_result.get("dailyBoxOfficeList", [])
 
@@ -114,121 +153,134 @@ if not daily_list:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 6. 데이터 전처리 (문자열 -> 숫자 변환, 이모지 및 순위 화살표 가공)
+# 6. 데이터 전처리 및 이모지 적용
 # -----------------------------------------------------------------------------
 df = pd.DataFrame(daily_list)
 
-# 숫자로 변환할 주요 컬럼 지정 (API 응답 문자열 -> 정수 변환)
 numeric_columns = ["rank", "rankInten", "audiCnt", "audiAcc", "scrnCnt"]
 for col in numeric_columns:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-# 순위(rank) 기준 오름차순 정렬
 df = df.sort_values("rank", ascending=True)
 
-# 영화 제목에 어울리는 이모지를 생성해 주는 함수
+# 영화 이모지 생성 함수
 def get_movie_emoji(title: str) -> str:
-    # 1. 키워드별 특수 이모지 매핑
-    if any(k in title for k in ["사랑", "러브", "첫사랑", "로맨스"]):
-        return "💖"
-    if any(k in title for k in ["명탐정", "추리", "형사", "사건"]):
-        return "🕵️"
-    if any(k in title for k in ["공포", "귀신", "악마", "고스트", "하우스"]):
-        return "👻"
-    if any(k in title for k in ["드래곤", "용", "몬스터"]):
-        return "🐉"
-    if any(k in title for k in ["왕", "킹", "프린스", "공주"]):
-        return "👑"
-    if any(k in title for k in ["우주", "스타", "플래닛"]):
-        return "🚀"
-    if any(k in title for k in ["음악", "노래", "밴드", "소리"]):
-        return "🎵"
-        
-    # 2. 일반 영화 관련 기본 이모지 목록
-    movie_emojis = ["🍿", "🎬", "🎟️", "📽️", "🎞️", "🎭"]
+    if any(k in title for k in ["사랑", "러브", "첫사랑", "로맨스"]): return "💖"
+    if any(k in title for k in ["명탐정", "추리", "형사", "사건"]): return "🕵️"
+    if any(k in title for k in ["공포", "귀신", "악마", "고스트"]): return "👻"
+    if any(k in title for k in ["드래곤", "용", "몬스터"]): return "🐉"
+    if any(k in title for k in ["왕", "킹", "프린스", "공주"]): return "👑"
+    if any(k in title for k in ["우주", "스타", "플래닛"]): return "🚀"
+    if any(k in title for k in ["음악", "노래", "밴드"]): return "🎵"
     
-    # 영화 제목의 해시값을 이용해 매번 동일하고 고르게 이모지 부여
+    movie_emojis = ["🍿", "🎬", "🎟️", "📽️", "🎞️", "🎭"]
     index = abs(hash(title)) % len(movie_emojis)
     return movie_emojis[index]
 
-# [요청 기능] 영화 이모지 및 누적관객 100만 명 이상 트로피(🏆) 결합 함수
 def format_movie_name(row):
     name = row["movieNm"]
     emoji = get_movie_emoji(name)
-    
-    # 100만 관객 이상일 때 트로피(🏆) 부착
     if row["audiAcc"] >= 1_000_000:
         return f"{emoji} {name} 🏆"
     return f"{emoji} {name}"
 
 df["표시영화명"] = df.apply(format_movie_name, axis=1)
 
-# 전날 대비 순위 증감(rankInten) 화살표 표시 함수
-# 양수: 빨간 위 화살표(🔺), 음수: 파란 아래 화살표(🔹), 0: 동일(-)
 def format_rank_change(val):
-    if val > 0:
-        return f"🔺 {val}"
-    elif val < 0:
-        return f"🔹 {abs(val)}"
-    else:
-        return "-"
+    if val > 0: return f"🔺 {val}"
+    elif val < 0: return f"🔹 {abs(val)}"
+    else: return "-"
 
 df["순위변동"] = df["rankInten"].apply(format_rank_change)
 
 # -----------------------------------------------------------------------------
-# 7. 1위 영화 지표 카드(Metric) 3장 크게 보여주기
+# 7. 1위 영화 시네마 스포트라이트 전광판 (UI 메인 카드가 화려하게 변경됨)
 # -----------------------------------------------------------------------------
 top_1 = df.iloc[0]
 
-st.subheader(f"🥇 {display_date_str} 1위 영화")
-col1, col2, col3 = st.columns(3)
+st.markdown('<div class="section-header">🥇 TODAY\'S NO.1 MOVIE SPOTLIGHT</div>', unsafe_allow_html=True)
 
-with col1:
-    st.metric(label="🎬 1위 영화명", value=top_1["표시영화명"])
-
-with col2:
-    st.metric(label="👥 해당 일자 관객수", value=f"{top_1['audiCnt']:,} 명")
-
-with col3:
-    st.metric(label="📈 누적 관객수", value=f"{top_1['audiAcc']:,} 명")
-
-st.divider()
-
-# -----------------------------------------------------------------------------
-# 8. 관객수 상위 5편 막대그래프 시각화
-# -----------------------------------------------------------------------------
-st.subheader("📊 관객수 상위 5개 영화")
-
-# 상위 5개 추출
-top5_df = df.head(5).copy()
-
-# 막대그래프 생성을 위해 영화명을 인덱스로 설정
-chart_data = top5_df.set_index("표시영화명")[["audiCnt"]]
-chart_data.columns = ["일일 관객수"]
-
-st.bar_chart(chart_data)
+with st.container():
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.metric(label="🏆 현재 1위 영화", value=top_1["표시영화명"])
+    with col2:
+        st.metric(label="👥 일일 관객수", value=f"{top_1['audiCnt']:,} 명")
+    with col3:
+        st.metric(label="📈 누적 관객수", value=f"{top_1['audiAcc']:,} 명")
 
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 9. 전체 박스오피스 순위 표 (순위, 순위 변동, 영화명, 개봉일, 관객수, 누적관객, 스크린수)
+# 8. 영화별 관람 수 추세 그래프 (7일간 관객수 추세 레이아웃)
 # -----------------------------------------------------------------------------
-st.subheader("📋 일별 박스오피스 전체 순위")
+st.markdown('<div class="section-header">📈 영화별 관람 수 추세 분석 (최근 7일간)</div>', unsafe_allow_html=True)
 
-# 필요한 컬럼만 추출 및 한글 컬럼명으로 변경
-display_df = df[["rank", "순위변동", "표시영화명", "openDt", "audiCnt", "audiAcc", "scrnCnt"]].copy()
-display_df.columns = ["순위", "순위 변동", "영화명", "개봉일", "관객수", "누적관객", "스크린수"]
+# 7일간 전체 데이터 로드
+with st.spinner("최근 7일간 관객 수 추세 데이터를 분석하는 중입니다..."):
+    trend_df = fetch_7days_trend_data(api_key, selected_date)
 
-# 표 서식 및 숫자 포맷 적용
-st.dataframe(
-    display_df,
-    column_config={
-        "순위": st.column_config.NumberColumn("순위", format="%d위"),
-        "관객수": st.column_config.NumberColumn("관객수", format="%d 명"),
-        "누적관객": st.column_config.NumberColumn("누적관객", format="%d 명"),
-        "스크린수": st.column_config.NumberColumn("스크린수", format="%d 개"),
-    },
-    use_container_width=True,
-    hide_index=True
-)
+if not trend_df.empty:
+    # 드롭다운에서 사용자가 분석할 영화 선택 (기본값: 1위 영화)
+    movie_list = df["movieNm"].tolist()
+    selected_movie_name = st.selectbox(
+        "🎞️ 관람 추세를 확인할 영화를 선택하세요:",
+        options=movie_list,
+        index=0
+    )
+
+    # 선택된 영화의 7일간 추세 데이터 필터링
+    filtered_trend = trend_df[trend_df["movieNm"] == selected_movie_name]
+
+    if not filtered_trend.empty:
+        # 날짜별 관객수 피벗 테이블
+        chart_trend = filtered_trend.pivot(index="date", columns="movieNm", values="audiCnt")
+        
+        # 추세선 그래프 출력
+        col_chart, col_info = st.columns([3, 1])
+        with col_chart:
+            st.line_chart(chart_trend, use_container_width=True)
+        with col_info:
+            latest_audi = filtered_trend.iloc[-1]["audiCnt"]
+            avg_audi = int(filtered_trend["audiCnt"].mean())
+            max_audi = filtered_trend["audiCnt"].max()
+            
+            st.write(f"**[{selected_movie_name}] 7일 요약**")
+            st.metric("최근 일일 관객", f"{latest_audi:,}명")
+            st.metric("7일 평균 관객", f"{avg_audi:,}명")
+            st.metric("최고 일일 관객", f"{max_audi:,}명")
+    else:
+        st.info("해당 영화는 최근 7일 동안 순위권(Top 10)에 진입한 기록이 부족합니다.")
+
+st.divider()
+
+# -----------------------------------------------------------------------------
+# 9. 관객수 상위 5개 막대그래프 & 박스오피스 전체 순위 표
+# -----------------------------------------------------------------------------
+col_left, col_right = st.columns([1, 1])
+
+with col_left:
+    st.markdown('<div class="section-header">📊 관객수 TOP 5</div>', unsafe_allow_html=True)
+    top5_df = df.head(5).copy()
+    chart_data = top5_df.set_index("표시영화명")[["audiCnt"]]
+    chart_data.columns = ["일일 관객수"]
+    st.bar_chart(chart_data)
+
+with col_right:
+    st.markdown('<div class="section-header">📋 일별 박스오피스 전체 순위</div>', unsafe_allow_html=True)
+    display_df = df[["rank", "순위변동", "표시영화명", "openDt", "audiCnt", "audiAcc", "scrnCnt"]].copy()
+    display_df.columns = ["순위", "변동", "영화명", "개봉일", "관객수", "누적관객", "스크린수"]
+
+    st.dataframe(
+        display_df,
+        column_config={
+            "순위": st.column_config.NumberColumn("순위", format="%d위"),
+            "관객수": st.column_config.NumberColumn("관객수", format="%d 명"),
+            "누적관객": st.column_config.NumberColumn("누적관객", format="%d 명"),
+            "스크린수": st.column_config.NumberColumn("스크린수", format="%d 개"),
+        },
+        use_container_width=True,
+        hide_index=True,
+        height=380
+    )
