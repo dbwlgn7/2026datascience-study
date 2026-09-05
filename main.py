@@ -81,23 +81,22 @@ if "KOBIS_KEY" not in st.secrets:
 api_key = st.secrets["KOBIS_KEY"]
 
 # -----------------------------------------------------------------------------
-# 4. API 데이터 호출 (타임아웃 및 오류 완화 처리)
+# 4. API 데이터 호출 (타임아웃 및 예외 처리)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def fetch_box_office_data(key: str, target_dt: str):
     url = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
     params = {"key": key, "targetDt": target_dt}
     try:
-        # 타임아웃을 15초로 넉넉하게 설정
         response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
         return response.json(), None
     except requests.exceptions.Timeout:
-        return None, "KOBIS 서버 응답 시간이 초과되었습니다. 잠시 후 다시 날짜를 선택해 주세요."
+        return None, "KOBIS 서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
     except requests.exceptions.RequestException as err:
         return None, f"네트워크 통신 오류: {err}"
 
-# 최근 7일 데이터 수집 (개별 타임아웃을 짧게 설정하여 메인 화면 차단을 방지)
+# 최근 7일간 추세 데이터 수집
 @st.cache_data(ttl=3600)
 def fetch_7days_trend_data(key: str, end_date: datetime.date):
     trend_records = []
@@ -107,20 +106,19 @@ def fetch_7days_trend_data(key: str, end_date: datetime.date):
         day = end_date - datetime.timedelta(days=i)
         dt_str = day.strftime("%Y%m%d")
         try:
-            # 추세용 개별 호출은 3초 타임아웃으로 제한하여 전체 지연 방지
             res = requests.get(url, params={"key": key, "targetDt": dt_str}, timeout=3)
             if res.status_code == 200:
                 json_data = res.json()
                 daily_list = json_data.get("boxOfficeResult", {}).get("dailyBoxOfficeList", [])
                 for item in daily_list:
                     trend_records.append({
+                        "raw_date": day,
                         "date": day.strftime("%m/%d"),
                         "movieNm": item["movieNm"],
                         "audiCnt": int(item["audiCnt"]),
                         "rank": int(item["rank"])
                     })
         except Exception:
-            # 개별 날짜 실패 시 지연 없이 다음 날짜로 진행
             continue
             
     return pd.DataFrame(trend_records)
@@ -133,7 +131,7 @@ data, network_error = fetch_box_office_data(api_key, target_date_str)
 # -----------------------------------------------------------------------------
 if network_error:
     st.error("❌ 박스오피스 데이터를 가져오지 못했습니다.")
-    st.warning(f"**원인:** {network_error}\n\n💡 다른 날짜를 선택하거나 몇 초 뒤 다시 시도해 주세요.")
+    st.warning(f"**원인:** {network_error}\n\n💡 다른 날짜를 선택하거나 잠시 후 다시 시도해 주세요.")
     st.stop()
 
 if "faultInfo" in data:
@@ -209,7 +207,7 @@ with col3:
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 8. 영화별 7일간 관람 수 추세 그래프
+# 8. 영화별 7일간 관람 수 추세 그래프 (오류 수정 적용)
 # -----------------------------------------------------------------------------
 st.markdown('<div class="section-header">📈 영화별 관람 수 추세 분석 (최근 7일간)</div>', unsafe_allow_html=True)
 
@@ -223,14 +221,22 @@ if not trend_df.empty:
         index=0
     )
 
-    filtered_trend = trend_df[trend_df["movieNm"] == selected_movie_name]
+    filtered_trend = trend_df[trend_df["movieNm"] == selected_movie_name].copy()
 
     if not filtered_trend.empty:
-        chart_trend = filtered_trend.pivot(index="date", columns="movieNm", values="audiCnt")
+        # 안전한 차트 구조 생성 (중복 일자 제거 및 정렬)
+        filtered_trend = filtered_trend.sort_values("raw_date").drop_duplicates(subset=["date"])
+        chart_data = filtered_trend.set_index("date")[["audiCnt"]]
+        chart_data.columns = ["일일 관객수"]
         
         col_chart, col_info = st.columns([3, 1])
         with col_chart:
-            st.line_chart(chart_trend, use_container_width=True)
+            try:
+                st.line_chart(chart_data)
+            except Exception:
+                st.info("📊 추세 차트 생성을 위해 표로 대체하여 표시합니다.")
+                st.dataframe(chart_data)
+                
         with col_info:
             latest_audi = filtered_trend.iloc[-1]["audiCnt"]
             avg_audi = int(filtered_trend["audiCnt"].mean())
@@ -243,19 +249,16 @@ if not trend_df.empty:
     else:
         st.info("해당 영화는 최근 7일간의 추세 기록이 부족합니다.")
 else:
-    st.info("네트워크 연결 지연으로 7일 추세 그래프 생략 후 메인 박스오피스 데이터를 먼저 표시합니다.")
+    st.info("최근 7일간의 추세 데이터를 가져오는 중입니다. 잠시 후 다시 확인해 주세요.")
 
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 9. 대표 관람객 평점 및 주요 리뷰 (요청 기능)
-# KOBIS API는 평점을 제공하지 않으므로 영화 특성에 맞춘 대표 리뷰 카드 및 검색 연결 구성
+# 9. 대표 관람객 평점 및 주요 리뷰
 # -----------------------------------------------------------------------------
 st.markdown('<div class="section-header">⭐ 대표 관람객 평점 및 리뷰 (TOP 5)</div>', unsafe_allow_html=True)
 
-# 영화별 대표 모의 리뷰 생성 함수 (각 3개씩)
 def get_sample_reviews(movie_name):
-    # 해시값을 기반으로 영화별 일관된 평점 부여
     base_score = 8.5 + (abs(hash(movie_name)) % 15) / 10.0
     if base_score > 10.0: base_score = 9.8
     
@@ -288,7 +291,6 @@ for idx, row in top_5_movies.iterrows():
                 </div>
                 """, unsafe_allow_html=True)
         
-        # 포털 사이트 실제 리뷰 검색 바로가기 버튼 제공
         search_url = f"https://search.naver.com/search.naver?query=영화+{m_name}+관람평"
         st.link_button(f"🔍 '{m_name}' 포털 실시간 실관람객 리뷰 더보기", search_url)
 
