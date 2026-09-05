@@ -114,7 +114,7 @@ if not daily_list:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 6. 데이터 전처리 (문자열 -> 숫자 변환, 트로피 및 순위 화살표 가공)
+# 6. 데이터 전처리 (문자열 -> 숫자 변환, 이모지 및 순위 화살표 가공)
 # -----------------------------------------------------------------------------
 df = pd.DataFrame(daily_list)
 
@@ -127,16 +127,44 @@ for col in numeric_columns:
 # 순위(rank) 기준 오름차순 정렬
 df = df.sort_values("rank", ascending=True)
 
-# [요청 기능 1] 누적관객 100만 명 이상 영화명 옆에 트로피 이모지(🏆) 추가
+# 영화 제목에 어울리는 이모지를 생성해 주는 함수
+def get_movie_emoji(title: str) -> str:
+    # 1. 키워드별 특수 이모지 매핑
+    if any(k in title for k in ["사랑", "러브", "첫사랑", "로맨스"]):
+        return "💖"
+    if any(k in title for k in ["명탐정", "추리", "형사", "사건"]):
+        return "🕵️"
+    if any(k in title for k in ["공포", "귀신", "악마", "고스트", "하우스"]):
+        return "👻"
+    if any(k in title for k in ["드래곤", "용", "몬스터"]):
+        return "🐉"
+    if any(k in title for k in ["왕", "킹", "프린스", "공주"]):
+        return "👑"
+    if any(k in title for k in ["우주", "스타", "플래닛"]):
+        return "🚀"
+    if any(k in title for k in ["음악", "노래", "밴드", "소리"]):
+        return "🎵"
+        
+    # 2. 일반 영화 관련 기본 이모지 목록
+    movie_emojis = ["🍿", "🎬", "🎟️", "📽️", "🎞️", "🎭"]
+    
+    # 영화 제목의 해시값을 이용해 매번 동일하고 고르게 이모지 부여
+    index = abs(hash(title)) % len(movie_emojis)
+    return movie_emojis[index]
+
+# [요청 기능] 영화 이모지 및 누적관객 100만 명 이상 트로피(🏆) 결합 함수
 def format_movie_name(row):
     name = row["movieNm"]
+    emoji = get_movie_emoji(name)
+    
+    # 100만 관객 이상일 때 트로피(🏆) 부착
     if row["audiAcc"] >= 1_000_000:
-        return f"{name} 🏆"
-    return name
+        return f"{emoji} {name} 🏆"
+    return f"{emoji} {name}"
 
 df["표시영화명"] = df.apply(format_movie_name, axis=1)
 
-# [요청 기능 2] 전날 대비 순위 증감(rankInten) 화살표 표시
+# 전날 대비 순위 증감(rankInten) 화살표 표시 함수
 # 양수: 빨간 위 화살표(🔺), 음수: 파란 아래 화살표(🔹), 0: 동일(-)
 def format_rank_change(val):
     if val > 0:
