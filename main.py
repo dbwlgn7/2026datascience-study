@@ -5,7 +5,7 @@ import streamlit as st
 import plotly.express as px
 
 # -----------------------------------------------------------------------------
-# 1. 페이지 기본 설정 및 시네마틱 감성 CSS (UI/UX 대폭 개편)
+# 1. 페이지 기본 설정 및 고대비 시네마 테마 CSS (가독성 최우선 개편)
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="시네마 박스오피스 대시보드",
@@ -13,117 +13,73 @@ st.set_page_config(
     layout="wide"
 )
 
-# 세련된 다크 시네마 & 네온 앰비언트 커스텀 스타일 정의
+# 시인성 높은 시네마 다크 테마 커스텀 스타일
 st.markdown("""
 <style>
-    /* 전체 배경: 어두운 벨벳 시네마 그라데이션 */
+    /* 전체 배경: 깊은 다크 시네마 */
     .stApp {
-        background: radial-gradient(circle at 50% -20%, #1A0B2E 0%, #080A10 70%) !important;
+        background-color: #0B0E14 !important;
         color: #F8FAFC !important;
         font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    /* 메인 네온 타이틀 */
+    /* 메인 타이틀 */
     .main-title {
-        font-size: 2.7rem;
+        font-size: 2.5rem;
         font-weight: 900;
-        letter-spacing: -1px;
-        background: linear-gradient(135deg, #FF4B4B 0%, #FFD700 50%, #00E5FF 100%);
+        letter-spacing: -0.5px;
+        background: linear-gradient(135deg, #FF4B4B 0%, #FFD700 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 0 10px 30px rgba(255, 75, 75, 0.3);
-        margin-bottom: 0.2rem;
+        margin-bottom: 0.3rem;
     }
     
-    /* 섹션 헤더 (글로잉 레드 바) */
+    /* 섹션 헤더 */
     .section-header {
-        font-size: 1.4rem;
+        font-size: 1.35rem;
         font-weight: 800;
         color: #FFD700;
         border-left: 5px solid #FF4B4B;
-        padding-left: 14px;
+        padding-left: 12px;
         margin-top: 35px;
         margin-bottom: 18px;
-        letter-spacing: -0.5px;
-        text-shadow: 0 0 12px rgba(255, 215, 0, 0.4);
+        letter-spacing: -0.3px;
     }
     
-    /* 글래스모피즘 시네마 카드 */
-    .glass-card {
-        background: rgba(20, 26, 38, 0.7) !important;
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 215, 0, 0.25) !important;
-        border-radius: 16px !important;
-        padding: 22px !important;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    }
-    .glass-card:hover {
-        border-color: rgba(255, 215, 0, 0.6) !important;
-        transform: translateY(-3px);
-        box-shadow: 0 15px 35px rgba(255, 215, 0, 0.15) !important;
-    }
-    
-    /* 커스텀 버튼 스타일 (입체 네온 그라데이션) */
-    .stButton > button {
-        background: linear-gradient(135deg, #FF4B4B 0%, #E50914 100%) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 12px 24px !important;
-        font-weight: 800 !important;
-        font-size: 1rem !important;
-        box-shadow: 0 6px 20px rgba(229, 9, 20, 0.4) !important;
-        transition: all 0.3s ease !important;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px) scale(1.02) !important;
-        box-shadow: 0 10px 28px rgba(229, 9, 20, 0.7) !important;
-        background: linear-gradient(135deg, #FF6B6B 0%, #FF1A25 100%) !important;
-    }
-    
-    /* 입력창 및 셀렉트박스 커스텀 */
-    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
-        background-color: rgba(15, 20, 30, 0.85) !important;
-        border: 1px solid rgba(255, 215, 0, 0.3) !important;
-        border-radius: 12px !important;
-        color: #FFFFFF !important;
-    }
-    
-    /* AI 추천 카드 전용 */
-    .ai-card {
-        background: linear-gradient(135deg, rgba(26, 32, 48, 0.9) 0%, rgba(13, 17, 26, 0.95) 100%);
-        border: 1px solid rgba(0, 229, 255, 0.4);
-        border-left: 6px solid #00E5FF;
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 12px 35px rgba(0, 229, 255, 0.15);
-    }
-    .ai-badge {
-        background: linear-gradient(45deg, #00E5FF, #7C4DFF);
-        color: #000000;
-        font-weight: 800;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.85rem;
-    }
-    
-    /* 타임라인 노드 카드 */
-    .timeline-node {
-        background: rgba(22, 28, 42, 0.8);
-        border-left: 4px solid #FFD700;
-        border-radius: 10px;
-        padding: 14px 18px;
+    /* 카드 컨테이너 (고대비 및 가독성 향상) */
+    .info-card {
+        background: #161B22;
+        border: 1px solid #30363D;
+        border-radius: 12px;
+        padding: 18px;
         margin-bottom: 12px;
     }
     
-    /* 멀티플렉스 카드 */
-    .cinema-card {
-        background: rgba(22, 28, 42, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    /* AI 추천 고급 카드 */
+    .ai-card {
+        background: linear-gradient(135deg, #161B22 0%, #0D1117 100%);
+        border: 1px solid #FFD700;
+        border-left: 6px solid #FFD700;
         border-radius: 14px;
-        padding: 18px;
+        padding: 22px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    
+    .ai-badge {
+        background: #FFD700;
+        color: #000000;
+        font-weight: 800;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+    }
+    
+    /* 영화관별 정보 카드 */
+    .cinema-card {
+        background-color: #161B22;
+        border: 1px solid #30363D;
+        border-radius: 12px;
+        padding: 16px;
         text-align: center;
     }
 </style>
@@ -146,7 +102,7 @@ with st.sidebar:
         max_value=yesterday_kst,
         min_value=datetime.date(2004, 1, 1)
     )
-    st.info("💡 영화진흥위원회(KOBIS) 공식 API 및 AI 분석 데이터 기반 대시보드입니다.")
+    st.info("💡 영화진흥위원회(KOBIS) 공식 API 기반 대시보드입니다.")
 
 target_date_str = selected_date.strftime("%Y%m%d")
 display_date_str = selected_date.strftime("%Y년 %m월 %d일")
@@ -232,7 +188,7 @@ if not daily_list:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 6. 데이터 전처리 및 가공
+# 6. 데이터 전처리
 # -----------------------------------------------------------------------------
 df = pd.DataFrame(daily_list)
 
@@ -273,7 +229,7 @@ def format_rank_change(val):
 df["순위변동"] = df["rankInten"].apply(format_rank_change)
 
 # -----------------------------------------------------------------------------
-# 7. 1위 영화 지표 스포트라이트 Card
+# 7. 1위 영화 지표 스포트라이트
 # -----------------------------------------------------------------------------
 top_1 = df.iloc[0]
 
@@ -290,79 +246,70 @@ with col3:
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 8. [신규 기능 1] ⏳ 개봉 영화 타임라인 오디세이 (Movie Release Timeline)
+# 8. [가독성 전면 개선] ⏳ 영화별 개봉일 및 상영 히스토리 (Y축 영화명 분리)
 # -----------------------------------------------------------------------------
-st.markdown('<div class="section-header">⏳ 개봉 영화 타임라인 오디세이</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">⏳ 영화별 개봉일 및 상영 히스토리</div>', unsafe_allow_html=True)
 
-st.write("현재 상영작들의 **개봉일 기준 히스토리 및 개봉 일수**를 한눈에 파악할 수 있는 타임라인입니다.")
+st.write("상영 중인 각 영화의 개봉일과 조회일 기준 개봉 경과 일수를 간결하게 비교할 수 있는 타임라인입니다.")
 
-# 개봉일 파싱 및 정렬
+# 개봉일 계산
 df['openDt_parsed'] = pd.to_datetime(df['openDt'], errors='coerce').dt.date
 
 def calc_days(open_date, query_date):
     if pd.isna(open_date):
-        return "개봉일 정보 없음", 0
+        return "개봉일 정보 없음"
     diff = (query_date - open_date).days
     if diff >= 0:
-        return f"개봉 {diff + 1}일차", diff + 1
+        return f"개봉 {diff + 1}일차"
     else:
-        return f"개봉 {abs(diff)}일 전", diff
+        return f"개봉 {abs(diff)}일 전"
 
-df['개봉경과_str'], df['개봉경과_days'] = zip(*df['openDt_parsed'].apply(lambda d: calc_days(d, selected_date)))
+df['개봉경과_str'] = df['openDt_parsed'].apply(lambda d: calc_days(d, selected_date))
 
-# 개봉일 기준 오름차순 정렬 (오래된 개봉작 -> 최근 개봉작)
-df_timeline = df.sort_values("openDt_parsed", ascending=True).copy()
+# Y축에 영화명을 배치하여 텍스트 겹침 현상 원천 차단
+df_timeline = df.sort_values("openDt_parsed", ascending=False).copy()
 
-# Plotly 타임라인 산점도 시각화
 fig_timeline = px.scatter(
     df_timeline,
     x="openDt_parsed",
-    y="audiAcc",
-    size="audiCnt",
-    color="movieNm",
-    text="movieNm",
-    hover_data={"rank": True, "openDt": True, "audiAcc": ":,", "audiCnt": ":,"},
+    y="movieNm",
+    size="audiAcc",
+    color="audiCnt",
+    text="개봉경과_str",
+    color_continuous_scale="Reds",
     labels={
         "openDt_parsed": "개봉일",
-        "audiAcc": "누적 관객수(명)",
-        "audiCnt": "일일 관객수",
         "movieNm": "영화명",
-        "rank": "현재 순위"
+        "audiAcc": "누적 관객수",
+        "audiCnt": "일일 관객수"
     },
-    title="📅 개봉일 대비 누적 관객 분포 (버블 크기: 일일 관객수)"
+    title="📅 영화별 개봉일 분포 (Y축: 영화명, 버블 크기: 누적 관객수)"
 )
-fig_timeline.update_traces(textposition='top center')
+
+fig_timeline.update_traces(
+    textposition='middle right',
+    marker=dict(sizemin=10)
+)
+
 fig_timeline.update_layout(
     template="plotly_dark",
     paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    height=380,
-    margin=dict(l=20, r=20, t=40, b=20)
+    plot_bgcolor='rgba(22, 27, 34, 0.8)',
+    height=450,
+    xaxis=dict(showgrid=True, gridcolor='#30363D'),
+    yaxis=dict(showgrid=True, gridcolor='#30363D'),
+    margin=dict(l=20, r=120, t=50, b=20)
 )
 
 st.plotly_chart(fig_timeline, use_container_width=True)
 
-# 타임라인 노드 카드 리스트
-t_cols = st.columns(min(len(df_timeline), 5))
-for i, (_, row) in enumerate(df_timeline.head(5).iterrows()):
-    with t_cols[i % 5]:
-        st.markdown(f"""
-        <div class="timeline-node">
-            <div style="font-size: 0.8rem; color: #FFD700; font-weight: 700;">📅 {row['openDt']}</div>
-            <div style="font-weight: 800; font-size: 0.95rem; color: #FFFFFF; margin: 4px 0;">{row['표시영화명']}</div>
-            <div style="font-size: 0.82rem; color: #00E5FF;">{row['개봉경과_str']}</div>
-            <div style="font-size: 0.78rem; color: #94A3B8; margin-top: 4px;">누적 {row['audiAcc']:,}명</div>
-        </div>
-        """, unsafe_allow_html=True)
-
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 9. [개선 기능 2] TOP 5 관객수 그래프 다변화 (막대 · 선 · 산점도 · 영역 · 도넛 선택)
+# 9. [차트 다변화] TOP 5 관객수 그래프 선택 (막대 · 추세선 · 산점도 · 영역 · 도넛)
 # -----------------------------------------------------------------------------
 st.markdown('<div class="section-header">📊 관객수 TOP 5 다채로운 차트 분석</div>', unsafe_allow_html=True)
 
-# 그래프 유형 선택 컨트롤
 chart_type = st.radio(
     "🎨 원하시는 시각화 차트 형태를 선택하세요:",
     options=["📊 막대 그래프", "📈 추세선 그래프", "🟣 산점도/버블 차트", "🌊 영역 차트", "🍩 도넛 차트"],
@@ -418,7 +365,7 @@ else:  # 🍩 도넛 차트
 fig.update_layout(
     template="plotly_dark",
     paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(22, 27, 34, 0.8)',
     height=420,
     margin=dict(l=20, r=20, t=50, b=20)
 )
@@ -428,7 +375,7 @@ st.plotly_chart(fig, use_container_width=True)
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 10. AI 취향 맞춤 영화 자동 추천 기능
+# 10. AI 취향 맞춤 영화 자동 추천
 # -----------------------------------------------------------------------------
 st.markdown('<div class="section-header">🤖 AI 취향 맞춤 영화 큐레이션</div>', unsafe_allow_html=True)
 
@@ -459,7 +406,7 @@ if st.button("✨ AI 추천 영화 분석하기", use_container_width=True):
                     payload = {
                         "model": "gpt-4o-mini",
                         "messages": [
-                            {"role": "system", "content": "너는 고급 영화 큐레이터 AI입니다. 매력적이고 세련된 스타일로 영화를 추천하세요."},
+                            {"role": "system", "content": "너는 고급 영화 큐레이터 AI입니다. 명확하고 읽기 쉽게 추천 사유를 작성하세요."},
                             {"role": "user", "content": f"다음 상영작 중 사용자 요청({user_prompt})에 가장 적합한 영화 1편을 추천해 줘.\n\n[상영작]:\n{movie_summary_str}"}
                         ]
                     }
