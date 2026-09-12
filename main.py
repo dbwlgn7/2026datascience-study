@@ -16,11 +16,13 @@ def load_data():
     # 장르(genre) 전처리: 세로막대(|)로 구분된 경우 첫 번째 장르만 추출
     df['genre'] = df['genre'].apply(lambda x: x.split('|')[0] if isinstance(x, str) else x)
     
-    # --- 추가된 부분: 트리맵 에러 방지용 결측치(NaN) 처리 ---
-    # Plotly 트리맵은 path에 빈칸(NaN)이 있으면 에러가 발생하므로 문자로 채워줍니다.
+    # 트리맵 및 버블차트 에러 방지용 결측치(NaN) 처리
     df['genre'] = df['genre'].fillna('기타장르').astype(str)
     df['movieNm'] = df['movieNm'].fillna('알수없음').astype(str)
+    
+    # 숫자형 데이터 변환 (빈칸이나 잘못된 문자는 0으로 처리)
     df['total_audi'] = pd.to_numeric(df['total_audi'], errors='coerce').fillna(0)
+    df['first_week_audi'] = pd.to_numeric(df['first_week_audi'], errors='coerce').fillna(0)
     
     # 관객 수가 0보다 큰 정상적인 데이터만 남기기
     df = df[df['total_audi'] > 0]
@@ -39,7 +41,7 @@ st.subheader("1. 장르별 영화 개봉 편수 (분포)")
 genre_counts = df['genre'].value_counts().reset_index()
 genre_counts.columns = ['장르', '편수']
 
-# 플롯리 도넛 그래프 생성 (hole 파라미터로 도넛 모양 구현)
+# 플롯리 도넛 그래프 생성
 fig_donut = px.pie(
     genre_counts, 
     values='편수', 
@@ -48,25 +50,21 @@ fig_donut = px.pie(
     title='장르별 개봉 비중'
 )
 
-# 조각에 마우스를 올렸을 때 편수와 비율이 보이도록 호버 템플릿 설정
 fig_donut.update_traces(
     textposition='inside', 
     textinfo='percent+label',
     hovertemplate="<b>%{label}</b><br>편수: %{value}편<br>비율: %{percent}<extra></extra>"
 )
 
-# 그래프 화면에 출력
 st.plotly_chart(fig_donut, use_container_width=True)
 
-# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
 st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 도넛 그래프를 통해 파악한 가장 비중이 큰 장르 등 핵심 정보 한 문장을 적어주세요.")
 
-# 구역 나누기 (선 긋기)
 st.divider()
 
 st.subheader("2. 장르별 총 관객 수 (트리맵)")
 
-# 플롯리 트리맵 생성: 장르 안에 영화가 포함되도록 계층 구조 설정 (크기는 총 관객 수)
+# 플롯리 트리맵 생성
 fig_treemap = px.treemap(
     df,
     path=['genre', 'movieNm'],
@@ -74,32 +72,27 @@ fig_treemap = px.treemap(
     title='장르 및 영화별 총 관객 수'
 )
 
-# 칸에 마우스를 올렸을 때 이름(영화명 또는 장르명)과 총 관객 수가 보이도록 호버 템플릿 설정
 fig_treemap.update_traces(
     hovertemplate="<b>%{label}</b><br>총 관객 수: %{value:,}명<extra></extra>"
 )
 
-# 그래프 화면에 출력
 st.plotly_chart(fig_treemap, use_container_width=True)
 
-# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
 st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 트리맵을 통해 파악한 가장 많은 관객을 동원한 장르나 특정 영화 등 핵심 정보 한 문장을 적어주세요.")
 
-# 구역 나누기 (선 긋기)
 st.divider()
 
 st.subheader("3. 총 관객 수 분포 (히스토그램)")
 
-# 플롯리 히스토그램 생성: 총 관객 수의 분포 시각화
+# 플롯리 히스토그램 생성
 fig_hist = px.histogram(
     df,
     x='total_audi',
-    nbins=10, # 막대의 개수 설정
+    nbins=10,
     title='총 관객 수 분포 (어느 구간에 영화가 가장 많을까?)',
     labels={'total_audi': '총 관객 수'}
 )
 
-# 칸(막대)에 마우스를 올렸을 때 상세 정보가 보이도록 설정
 fig_hist.update_traces(
     hovertemplate="<b>관객 수 구간:</b> %{x}<br><b>영화 편수:</b> %{y}편<extra></extra>"
 )
@@ -108,39 +101,33 @@ fig_hist.update_layout(
     xaxis_title="총 관객 수 (명)"
 )
 
-# 그래프 화면에 출력
 st.plotly_chart(fig_hist, use_container_width=True)
 
-# 1. 가장 관객이 많은 영화 찾기
+# 가장 관객이 많은 영화 및 밀집 구간 찾기
 max_audi_movie = df.loc[df['total_audi'].idxmax()]
 best_movie_name = max_audi_movie['movieNm']
 best_movie_audi = max_audi_movie['total_audi']
 
-# 2. 가장 영화가 많이 몰려 있는 구간 찾기 (pandas의 cut 기능 활용)
 bins = pd.cut(df['total_audi'], bins=10)
 most_freq_bin = bins.value_counts().idxmax()
-
-# 구간의 시작과 끝 계산 (통계 계산상 첫 구간의 시작이 음수로 나오는 것을 방지하기 위해 max 0 처리)
 start_audi = max(0, int(most_freq_bin.left))
 end_audi = int(most_freq_bin.right)
 
-# '이 그래프로 알 수 있는 것' 문구 출력 (위에서 계산된 데이터를 동적으로 삽입)
 st.info(f"**💡 이 그래프로 알 수 있는 것:**\n\n"
         f"✔️ 이 기간 개봉한 영화들의 총 관객 수는 오른쪽으로 긴 꼬리를 가진 분포를 보입니다. 즉, 대부분의 영화가 **{start_audi:,}명 ~ {end_audi:,}명** 구간에 몰려 있습니다.\n\n"
         f"✔️ 가장 압도적으로 많은 관객을 동원한 영화는 **'{best_movie_name}'**(총 관객 약 {best_movie_audi:,}명)입니다.")
 
-# 구역 나누기 (선 긋기)
 st.divider()
 
 st.subheader("4. 개봉일 스크린 수와 총 관객 수의 관계 (산점도)")
 
-# 플롯리 산점도 생성: 스크린 수와 총 관객 수의 상관관계 시각화
+# 플롯리 산점도 생성
 fig_scatter = px.scatter(
     df,
     x='first_scrn',
     y='total_audi',
-    color='genre',        # 장르별로 점 색상 다르게 표시
-    hover_name='movieNm', # 마우스를 올렸을 때 영화명이 가장 위에 표시되도록 설정
+    color='genre',
+    hover_name='movieNm',
     title='개봉일 스크린 수 vs 총 관객 수',
     labels={
         'first_scrn': '개봉일 스크린 수 (개)',
@@ -149,7 +136,6 @@ fig_scatter = px.scatter(
     }
 )
 
-# 겹쳐있는 점들이 잘 보이도록 약간의 투명도(opacity)를 주고 툴팁 내용 수정
 fig_scatter.update_traces(
     marker=dict(size=9, opacity=0.7),
     hovertemplate="<b>%{hovertext}</b><br><br>" +
@@ -157,29 +143,26 @@ fig_scatter.update_traces(
                   "총 관객 수: %{y:,}명<extra></extra>"
 )
 
-# 그래프 화면에 출력
 st.plotly_chart(fig_scatter, use_container_width=True)
 
-# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
 st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 개봉일 스크린 수가 많을수록 총 관객 수도 늘어나는 경향(양의 상관관계)이 있는지, 혹은 특정 장르가 두드러지는 특징이 있는지 등 핵심 정보 한 문장을 적어주세요.")
 
-# 구역 나누기 (선 긋기)
 st.divider()
 
 st.subheader("5. 장르별 총 관객 수 분포 (상자 그림)")
 
-# 1. 장르별 영화 편수 계산 및 10편 이상인 장르만 골라내기
+# 10편 이상인 장르만 골라내기
 genre_counts_for_box = df['genre'].value_counts()
 valid_genres = genre_counts_for_box[genre_counts_for_box >= 10].index
 filtered_df = df[df['genre'].isin(valid_genres)]
 
-# 2. 플롯리 상자 그림(박스플롯) 생성
+# 플롯리 상자 그림(박스플롯) 생성
 fig_box = px.box(
     filtered_df,
     x='genre',
     y='total_audi',
-    color='genre',        # 장르별로 상자 색상 다르게 표시
-    hover_name='movieNm', # 상자 밖으로 튀는 점(이상치)에 마우스 올릴 때 영화명 표시
+    color='genre',
+    hover_name='movieNm',
     title='장르별 총 관객 수 분포 (영화 10편 이상 장르만)',
     labels={
         'genre': '장르',
@@ -187,16 +170,48 @@ fig_box = px.box(
     }
 )
 
-# 툴팁(호버) 양식 다듬기
 fig_box.update_traces(
     hovertemplate="<b>%{hovertext}</b><br>총 관객 수: %{y:,}명<extra></extra>"
 )
 
-# 그래프 화면에 출력
 st.plotly_chart(fig_box, use_container_width=True)
 
-# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
 st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 상자 그림을 통해 파악한 특정 장르의 관객 수 편차나, 이례적으로 흥행한(상자 위로 튀어나온) 영화에 대한 핵심 정보 한 문장을 적어주세요.")
 
-# 구역 나누기 (선 긋기)
+st.divider()
+
+st.subheader("6. 스크린 수, 총 관객 수, 첫 주 관객 수의 관계 (버블 차트)")
+
+# 플롯리 버블 차트 생성 (산점도 + size 파라미터)
+fig_bubble = px.scatter(
+    df,
+    x='first_scrn',
+    y='total_audi',
+    color='genre',
+    size='first_week_audi',          # 원의 크기를 첫 주 관객 수로 지정
+    hover_name='movieNm',
+    custom_data=['first_week_audi'], # 툴팁에 원래 숫자를 표시하기 위해 데이터 전달
+    size_max=50,                     # 가장 큰 원의 최대 크기 제한
+    title='개봉일 스크린 수 vs 총 관객 수 (원의 크기: 첫 주 관객 수)',
+    labels={
+        'first_scrn': '개봉일 스크린 수 (개)',
+        'total_audi': '총 관객 수 (명)',
+        'genre': '장르',
+        'first_week_audi': '첫 주 관객 수 (명)'
+    }
+)
+
+# 겹치는 점이 잘 보이도록 투명도, 테두리를 주고 툴팁 내용 구성
+fig_bubble.update_traces(
+    marker=dict(opacity=0.6, line=dict(width=0.5, color='gray')),
+    hovertemplate="<b>%{hovertext}</b><br><br>" +
+                  "개봉일 스크린 수: %{x}개<br>" +
+                  "총 관객 수: %{y:,}명<br>" +
+                  "첫 주 관객 수: %{customdata[0]:,}명<extra></extra>"
+)
+
+st.plotly_chart(fig_bubble, use_container_width=True)
+
+st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 원의 크기(첫 주 관객 수)가 클수록 최종 관객 수도 높은지(비례하는지), 혹은 첫 주만 반짝하고 멈춘 예외적인 영화가 있는지 등 핵심 정보 한 문장을 적어주세요.")
+
 st.divider()
