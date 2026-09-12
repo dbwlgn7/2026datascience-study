@@ -8,14 +8,14 @@ import streamlit as st
 # 1. Streamlit 기본 페이지 설정
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="전국 학교 급식 알레르기 & 비타민 대시보드",
+    page_title="전국 학교 급식 알리미",
     page_icon="🥗",
     layout="wide",
 )
 
-st.title("🥗 전국 학교 급식 알레르기 식품 & 비타민 영양소 비교 대시보드")
+st.title("🥗 전국 학교 급식 알리미")
 st.caption(
-    "원하는 전국 3개 학교의 이름을 직접 입력하여 알레르기 유발 식품 출현 빈도(묶은 가로 막대)와 비타민 제공량을 실시간 비교합니다."
+    "선택한 학교들의 알레르기 유발 식품 및 비타민 제공량을 직관적으로 비교하고, 특정 날짜의 상세 식단을 조회합니다."
 )
 
 # NEIS 알레르기 코드 매핑 (1~19번)
@@ -42,30 +42,24 @@ ALLERGY_DICT = {
 }
 
 # ---------------------------------------------------------
-# 2. 사이드바 - 자유로운 학교 검색 및 분석 기간 설정
+# 2. 사이드바 - 학교 검색 및 조회 기간 설정
 # ---------------------------------------------------------
-st.sidebar.header("⚙️ 학교 검색 & 분석 설정")
-st.sidebar.caption("전국 어느 학교든 이름 일부/전체를 입력하세요.")
+st.sidebar.header("⚙️ 학교 검색 & 기간 설정")
 
-# 자유 입력 방식 (기본값 제공)
 school_input_1 = st.sidebar.text_input("첫 번째 학교명", "인천남동고등학교")
 school_input_2 = st.sidebar.text_input("두 번째 학교명", "인천고등학교")
 school_input_3 = st.sidebar.text_input("세 번째 학교명", "석정여자고등학교")
 
 start_date = st.sidebar.text_input("조회 시작일 (YYYYMMDD)", "20260901")
 end_date = st.sidebar.text_input("조회 종료일 (YYYYMMDD)", "20260915")
-api_key = st.sidebar.text_input(
-    "NEIS API Key (선택)",
-    type="password",
-    help="인증키가 없으면 한 번에 최대 5건~100건까지만 조회될 수 있습니다.",
-)
+api_key = st.sidebar.text_input("NEIS API Key (선택)", type="password")
+
 
 # ---------------------------------------------------------
-# 3. NEIS API 데이터 수집 함수 (자동 검색)
+# 3. 데이터 수집 및 파싱 함수
 # ---------------------------------------------------------
 @st.cache_data(ttl=3600)
 def search_school_info(school_name, key=None):
-    """학교 이름으로 교육청코드와 학교코드를 자동 검색"""
     if not school_name.strip():
         return None
     url = "https://open.neis.go.kr/hub/schoolInfo"
@@ -88,7 +82,6 @@ def search_school_info(school_name, key=None):
 
 @st.cache_data(ttl=3600)
 def fetch_meal_data(ofcdc, code, from_ymd, to_ymd, key=None):
-    """급식 식단 정보 수집"""
     url = "https://open.neis.go.kr/hub/mealServiceDietInfo"
     params = {
         "Type": "json",
@@ -122,9 +115,7 @@ def parse_allergies(ddish_nm):
 
 def clean_dish_names(ddish_nm):
     raw_dishes = ddish_nm.split("<br/>")
-    return ", ".join(
-        [re.sub(r"\([0-9\.]+\)", "", d).strip() for d in raw_dishes if d]
-    )
+    return [re.sub(r"\([0-9\.]+\)", "", d).strip() for d in raw_dishes if d]
 
 
 def parse_nutrition(ntr_info_str):
@@ -162,20 +153,17 @@ def parse_nutrition(ntr_info_str):
 
 
 # ---------------------------------------------------------
-# 4. 데이터 로드 프로세스
+# 4. 데이터 로드
 # ---------------------------------------------------------
 user_school_inputs = [school_input_1, school_input_2, school_input_3]
 target_schools_info = []
-missing_schools = []
 
-with st.spinner("입력하신 학교 정보를 조회하고 급식 데이터를 검색하는 중입니다..."):
+with st.spinner("급식 데이터를 수집 중입니다..."):
     for s_input in user_school_inputs:
         if s_input.strip():
             info = search_school_info(s_input, api_key)
             if info:
                 target_schools_info.append(info)
-            else:
-                missing_schools.append(s_input)
 
     all_data = []
     for s_info in target_schools_info:
@@ -183,11 +171,17 @@ with st.spinner("입력하신 학교 정보를 조회하고 급식 데이터를 
             s_info["ofcdc"], s_info["code"], start_date, end_date, api_key
         )
         for m in meals:
+            dish_list = clean_dish_names(m["DDISH_NM"])
+            cal_match = re.search(r"[\d\.]+", m.get("CAL_INFO", "0"))
+            cal_val = float(cal_match.group()) if cal_match else 0.0
+
             record = {
                 "학교명": s_info["name"],
                 "급식일": m["MLSV_YMD"],
-                "메뉴": clean_dish_names(m["DDISH_NM"]),
+                "메뉴목록": dish_list,
+                "메뉴": ", ".join(dish_list),
                 "알레르기목록": parse_allergies(m["DDISH_NM"]),
+                "칼로리(kcal)": cal_val,
             }
             record.update(parse_nutrition(m.get("NTR_INFO", "")))
             all_data.append(record)
@@ -197,15 +191,8 @@ df = pd.DataFrame(all_data)
 # ---------------------------------------------------------
 # 5. 대시보드 화면 구성
 # ---------------------------------------------------------
-if missing_schools:
-    st.warning(
-        f"⚠️ 다음 학교의 정보를 찾을 수 없습니다: **{', '.join(missing_schools)}** (정확한 학교명을 입력해 주세요)"
-    )
-
 if df.empty:
-    st.info(
-        "💡 왼쪽 사이드바에서 비교하고 싶은 3개 학교명을 입력하고 [엔터]를 눌러주세요."
-    )
+    st.info("💡 사이드바에서 비교하고 싶은 학교명을 입력해 주세요.")
 else:
     df["급식일"] = pd.to_datetime(df["급식일"], format="%Y%m%d")
 
@@ -213,24 +200,22 @@ else:
     col1, col2, col3 = st.columns(3)
     col1.metric("조회된 학교 수", f"{len(df['학교명'].unique())}개교")
     col2.metric("수집된 총 식단 수", f"{len(df)}건")
-    col3.metric("알레르기 표기 감지 총 횟수", f"{sum(len(a) for a in df['알레르기목록'])}회")
+    col3.metric("알레르기 감지 총 횟수", f"{sum(len(a) for a in df['알레르기목록'])}회")
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs([
-        "📊 알레르기 식품 빈도 (묶은 가로 막대)",
-        "🍋 비타민 & 영양소 제공량 비교",
-        "📋 상세 데이터 보기",
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 알레르기 식품 빈도 (가독성 개선)",
+        "🍋 시험기간 영양소 비교",
+        "📅 특정 날짜 급식 상세 조회",
+        "📋 데이터 전체 보기",
     ])
 
     # ---------------------------------------------------------
-    # Tab 1: 묶은 가로 막대그래프
+    # Tab 1: 가독성이 개선된 묶은 가로 막대그래프
     # ---------------------------------------------------------
     with tab1:
         st.subheader("학교별 알레르기 유발 식품 출현 빈도 비교")
-        st.caption(
-            "하나의 식품(예: 계란)에 대해 선택된 학교들의 출현 횟수를 나란히 비교합니다."
-        )
 
         allergy_rows = []
         for _, row in df.iterrows():
@@ -248,6 +233,10 @@ else:
                 .reset_index(name="출현횟수")
             )
 
+            # 가독성 개선: 수치 라벨 추가, 동적 높이 조절, 간격 넓히기
+            unique_items = df_counts["알레르기식품"].nunique()
+            chart_height = max(450, unique_items * 40)
+
             fig_h_bar = px.bar(
                 df_counts,
                 x="출현횟수",
@@ -255,25 +244,32 @@ else:
                 color="학교명",
                 orientation="h",
                 barmode="group",
-                title="알레르기 식품별 학교 간 양적 차이 비교",
+                text="출현횟수",
+                title="<b>[알레르기 식품별 출현 횟수]</b> 막대 밖 숫자로 직관적 비교",
                 labels={"출현횟수": "출현 횟수(회)", "알레르기식품": "알레르기 유발 식품"},
-                height=650,
+                height=chart_height,
+                template="plotly_white",
             )
+
+            # 라벨 위치 및 폰트 스타일 가독성 최적화
+            fig_h_bar.update_traces(textposition="outside", cliponaxis=False)
             fig_h_bar.update_layout(
                 yaxis={"categoryorder": "total ascending"},
-                xaxis_title="급식 출현 횟수 (회)",
-                legend_title="학교명",
+                font=dict(size=13),
+                bargap=0.25,
+                bargroupgap=0.1,
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+                ),
+                margin=dict(l=20, r=50, t=60, b=40),
             )
             st.plotly_chart(fig_h_bar, use_container_width=True)
 
     # ---------------------------------------------------------
-    # Tab 2: 시험기간 비타민 & 영양소 비교
+    # Tab 2: 가독성이 개선된 영양소 비교 그래프
     # ---------------------------------------------------------
     with tab2:
         st.subheader("학교별 주요 비타민 & 피로회복 영양소 평균 제공량")
-        st.caption(
-            "시험기간 면역 및 피로 회복과 관련된 주요 영양소(비타민 C, B1, B2, 철분 등)의 평균 제공량을 비교합니다."
-        )
 
         nut_cols = [
             "비타민A(R.E)",
@@ -299,14 +295,85 @@ else:
             y="평균제공량",
             color="학교명",
             barmode="group",
-            text_auto=".2f",
-            title="시험기간 피로회복 관련 주요 영양소 평균 제공량 비교",
+            text="평균제공량",
+            title="<b>[시험기간 피로회복 영양소 평균 제공량]</b>",
+            template="plotly_white",
+            height=500,
+        )
+        fig_nut.update_traces(
+            texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False
+        )
+        fig_nut.update_layout(
+            font=dict(size=13),
+            bargap=0.2,
+            bargroupgap=0.1,
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
         )
         st.plotly_chart(fig_nut, use_container_width=True)
 
     # ---------------------------------------------------------
-    # Tab 3: 원본 데이터 표
+    # Tab 3: 신규 기능 - 특정 날짜 급식 상세 조회
     # ---------------------------------------------------------
     with tab3:
-        st.subheader("수집된 데이터 상세 표")
+        st.subheader("🔍 일별 급식 메뉴 & 알레르기 상세 조회")
+        st.caption("학교와 날짜를 선택하면 해당 날짜의 전체 메뉴와 알레르기 정보를 보여줍니다.")
+
+        col_sel1, col_sel2 = st.columns(2)
+        with col_sel1:
+            selected_school = st.selectbox(
+                "조회할 학교를 선택하세요", options=df["학교명"].unique()
+            )
+
+        # 선택한 학교의 급식 가능 날짜 목록
+        school_dates = (
+            df[df["학교명"] == selected_school]["급식일"]
+            .dt.strftime("%Y-%m-%d")
+            .unique()
+        )
+
+        with col_sel2:
+            selected_date_str = st.selectbox(
+                "조회할 날짜를 선택하세요", options=school_dates
+            )
+
+        # 해당 데이터 필터링
+        selected_meal = df[
+            (df["학교명"] == selected_school)
+            & (df["급식일"].dt.strftime("%Y-%m-%d") == selected_date_str)
+        ]
+
+        if not selected_meal.empty:
+            meal_data = selected_meal.iloc[0]
+
+            st.markdown("---")
+            st.success(f"📌 **{selected_school}** ({selected_date_str} 중식)")
+
+            col_m1, col_m2, col_m3 = st.columns([2, 2, 1])
+
+            with col_m1:
+                st.markdown("### 🍱 오늘의 메뉴")
+                for item in meal_data["메뉴목록"]:
+                    st.write(f"- **{item}**")
+
+            with col_m2:
+                st.markdown("### ⚠️ 포함된 알레르기 성분")
+                if meal_data["알레르기목록"]:
+                    for alg in meal_data["알레르기목록"]:
+                        st.warning(f"• {alg}")
+                else:
+                    st.info("표시된 알레르기 성분이 없습니다.")
+
+            with col_m3:
+                st.markdown("### 📊 영양 정보")
+                st.metric("총 칼로리", f"{meal_data['칼로리(kcal)']:.0f} kcal")
+                st.metric("비타민C", f"{meal_data['비타민C(mg)']:.1f} mg")
+                st.metric("티아민(B1)", f"{meal_data['티아민(B1)']:.2f} mg")
+
+    # ---------------------------------------------------------
+    # Tab 4: 데이터 전체 보기
+    # ---------------------------------------------------------
+    with tab4:
+        st.subheader("수집된 데이터 전체 표")
         st.dataframe(df, use_container_width=True)
