@@ -131,3 +131,37 @@ st.info(f"**💡 이 그래프로 알 수 있는 것:**\n\n"
 
 # 구역 나누기 (선 긋기)
 st.divider()
+
+st.subheader("4. 개봉일 스크린 수와 총 관객 수의 관계 (산점도)")
+
+# 플롯리 산점도 생성: 스크린 수와 총 관객 수의 상관관계 시각화
+fig_scatter = px.scatter(
+    df,
+    x='first_scrn',
+    y='total_audi',
+    color='genre',        # 장르별로 점 색상 다르게 표시
+    hover_name='movieNm', # 마우스를 올렸을 때 영화명이 가장 위에 표시되도록 설정
+    title='개봉일 스크린 수 vs 총 관객 수',
+    labels={
+        'first_scrn': '개봉일 스크린 수 (개)',
+        'total_audi': '총 관객 수 (명)',
+        'genre': '장르'
+    }
+)
+
+# 겹쳐있는 점들이 잘 보이도록 약간의 투명도(opacity)를 주고 툴팁 내용 수정
+fig_scatter.update_traces(
+    marker=dict(size=9, opacity=0.7),
+    hovertemplate="<b>%{hovertext}</b><br><br>" +
+                  "개봉일 스크린 수: %{x}개<br>" +
+                  "총 관객 수: %{y:,}명<extra></extra>"
+)
+
+# 그래프 화면에 출력
+st.plotly_chart(fig_scatter, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
+st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 개봉일 스크린 수가 많을수록 총 관객 수도 늘어나는 경향(양의 상관관계)이 있는지, 혹은 특정 장르가 두드러지는 특징이 있는지 등 핵심 정보 한 문장을 적어주세요.")
+
+# 구역 나누기 (선 긋기)
+st.divider()
