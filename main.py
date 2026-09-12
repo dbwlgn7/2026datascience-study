@@ -165,3 +165,38 @@ st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 개봉일 스�
 
 # 구역 나누기 (선 긋기)
 st.divider()
+
+st.subheader("5. 장르별 총 관객 수 분포 (상자 그림)")
+
+# 1. 장르별 영화 편수 계산 및 10편 이상인 장르만 골라내기
+genre_counts_for_box = df['genre'].value_counts()
+valid_genres = genre_counts_for_box[genre_counts_for_box >= 10].index
+filtered_df = df[df['genre'].isin(valid_genres)]
+
+# 2. 플롯리 상자 그림(박스플롯) 생성
+fig_box = px.box(
+    filtered_df,
+    x='genre',
+    y='total_audi',
+    color='genre',        # 장르별로 상자 색상 다르게 표시
+    hover_name='movieNm', # 상자 밖으로 튀는 점(이상치)에 마우스 올릴 때 영화명 표시
+    title='장르별 총 관객 수 분포 (영화 10편 이상 장르만)',
+    labels={
+        'genre': '장르',
+        'total_audi': '총 관객 수 (명)'
+    }
+)
+
+# 툴팁(호버) 양식 다듬기
+fig_box.update_traces(
+    hovertemplate="<b>%{hovertext}</b><br>총 관객 수: %{y:,}명<extra></extra>"
+)
+
+# 그래프 화면에 출력
+st.plotly_chart(fig_box, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
+st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 상자 그림을 통해 파악한 특정 장르의 관객 수 편차나, 이례적으로 흥행한(상자 위로 튀어나온) 영화에 대한 핵심 정보 한 문장을 적어주세요.")
+
+# 구역 나누기 (선 긋기)
+st.divider()
