@@ -69,11 +69,45 @@ st.info("💡 **이 그래프로 알 수 있는 것:** (이곳에 그래프가 �
 
 
 # ==========================================
-# [구역 2] 새로운 그래프 추가를 위한 빈 구역
+# [구역 2] 총 관객수 TOP 5 영화의 일일 관객수 비교 (다중 선 그래프)
 # ==========================================
 st.divider()
-st.header("2. (새로운 그래프 제목을 입력하세요)")
-st.write("앞으로 추가될 두 번째 그래프가 들어갈 자리입니다.")
+st.header("2. 최고 흥행작 TOP 5 일일 관객수 비교")
+st.markdown("전체 기간 동안 일관객 합계가 가장 높은 상위 5개 영화의 흥행 추이를 비교합니다. 우측 범례를 클릭하여 특정 영화를 켜거나 끌 수 있습니다.")
 
-# 차후 여기에 새로운 데이터 필터링과 st.plotly_chart() 등을 추가하시면 됩니다.
-# st.info("💡 **이 그래프로 알 수 있는 것:** (...)")
+# 1. 영화별 전체 기간 '일관객' 합계 계산
+movie_total_audience = df.groupby('영화명')['일관객'].sum().reset_index()
+
+# 2. 합계 기준 상위 5개 영화 추출
+top5_movies = movie_total_audience.sort_values(by='일관객', ascending=False).head(5)['영화명'].tolist()
+
+# 3. 원본 데이터에서 상위 5개 영화 데이터만 필터링
+top5_df = df[df['영화명'].isin(top5_movies)]
+
+# 4. Plotly 다중 선 그래프 생성 (color='영화명'으로 구분)
+fig2 = px.line(
+    top5_df,
+    x="날짜",
+    y="일관객",
+    color="영화명",
+    markers=True,
+    title="TOP 5 영화 일관객 추이 비교"
+)
+
+# 5. 그래프 레이아웃 및 툴팁 다듬기
+fig2.update_traces(
+    hovertemplate="<b>%{data.name}</b><br><b>날짜:</b> %{x|%Y년 %m월 %d일}<br><b>일관객:</b> %{y:,.0f}명"
+)
+
+fig2.update_layout(
+    xaxis_title="날짜",
+    yaxis_title="일일 관객수 (명)",
+    hovermode="x unified",
+    legend_title_text="영화명 (클릭)"
+)
+
+# 6. 그래프 출력
+st.plotly_chart(fig2, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 문구 자리
+st.info("💡 **이 그래프로 알 수 있는 것:** 총 관객수 상위 5개 영화들의 흥행 패턴 차이(예: 초반에 몰리는 영화 vs 꾸준히 관객을 유지하는 영화)를 한눈에 비교할 수 있습니다.")
