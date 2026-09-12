@@ -222,3 +222,56 @@ st.plotly_chart(fig4, use_container_width=True)
 
 # '이 그래프로 알 수 있는 것' 문구 자리
 st.info("💡 **이 그래프로 알 수 있는 것:** 단기간에 폭발적인 인기를 끌어 상위권을 차지한 영화와, 순위는 압도적이지 않아도 오랫동안 10위권에 머물러 누적 관객이 많은 영화를 비교해 볼 수 있습니다.")
+
+# ==========================================
+# [구역 5] 월 및 요일별 관객수 집중도 (히트맵)
+# ==========================================
+st.divider()
+st.header("5. 월 및 요일별 관객수 집중도")
+st.markdown("날짜 데이터에서 월과 요일을 추출하여, 1년 중 어느 시기, 어느 요일에 극장 방문객이 가장 많은지 히트맵으로 확인합니다.")
+
+# 1. 히트맵을 위한 데이터 복사 및 가공 (월, 요일 추출)
+heatmap_df = df.copy()
+heatmap_df['월'] = heatmap_df['날짜'].dt.month.astype(str) + '월'
+
+# 요일 매핑 (0: 월요일 ~ 6: 일요일)
+weekday_mapping = {0: '월', 1: '화', 2: '수', 3: '목', 4: '금', 5: '토', 6: '일'}
+heatmap_df['요일'] = heatmap_df['날짜'].dt.weekday.map(weekday_mapping)
+
+# 2. 월별/요일별 관객수 합계 계산
+heatmap_data = heatmap_df.groupby(['월', '요일'])['일관객'].sum().reset_index()
+
+# 3. 정렬을 위한 순서 리스트 생성
+month_order = [f"{i}월" for i in range(1, 13)]
+weekday_order = ['월', '화', '수', '목', '금', '토', '일']
+
+# 4. Plotly 히트맵 그래프 생성
+fig5 = px.density_heatmap(
+    heatmap_data,
+    x="요일",
+    y="월",
+    z="일관객",
+    histfunc="sum",
+    title="월 x 요일별 누적 관객수 히트맵",
+    category_orders={"월": month_order, "요일": weekday_order},
+    color_continuous_scale="Blues" # 색이 진할수록 관객이 많음을 표현
+)
+
+# 5. 툴팁 및 레이아웃 다듬기
+fig5.update_traces(
+    hovertemplate="<b>%{y} %{x}요일</b><br>총 일관객: %{z:,.0f}명<extra></extra>"
+)
+
+# y축이 위에서부터 1월->12월 순서로 내려오도록 역순(reversed) 설정
+fig5.update_layout(
+    xaxis_title="요일",
+    yaxis_title="월",
+    yaxis_autorange="reversed", 
+    coloraxis_colorbar_title="총 관객수"
+)
+
+# 6. 그래프 출력
+st.plotly_chart(fig5, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 문구 자리
+st.info("💡 **이 그래프로 알 수 있는 것:** 평일과 주말(토, 일)의 확연한 관객수 차이뿐만 아니라, 방학 시즌이나 명절이 있는 특정 달에 관객이 집중되는 패턴을 한눈에 파악할 수 있습니다.")
