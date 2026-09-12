@@ -8,12 +8,12 @@ import streamlit as st
 # 1. Streamlit 기본 페이지 설정
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="전국 학교 급식 알리미",
+    page_title="전국 학교 급식 알레르기 & 비타민 대시보드",
     page_icon="🥗",
     layout="wide",
 )
 
-st.title("🥗 전국 학교 급식 알리미")
+st.title("🥗 전국 학교 급식 알레르기 & 영양소 분석 대시보드")
 st.caption(
     "선택한 학교들의 알레르기 유발 식품 및 비타민 제공량을 직관적으로 비교하고, 특정 날짜의 상세 식단을 조회합니다."
 )
@@ -47,7 +47,7 @@ ALLERGY_DICT = {
 st.sidebar.header("⚙️ 학교 검색 & 기간 설정")
 
 school_input_1 = st.sidebar.text_input("첫 번째 학교명", "인천남동고등학교")
-school_input_2 = st.sidebar.text_input("두 번째 학교명", "인천고등학교")
+school_input_2 = st.sidebar.text_input("두 번째 학교명", "동인천고등학교")
 school_input_3 = st.sidebar.text_input("세 번째 학교명", "석정여자고등학교")
 
 start_date = st.sidebar.text_input("조회 시작일 (YYYYMMDD)", "20260901")
@@ -205,14 +205,14 @@ else:
     st.markdown("---")
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 알레르기 식품 빈도 (가독성 개선)",
+        "📊 알레르기 식품 빈도 (가독성 최적화)",
         "🍋 시험기간 영양소 비교",
         "📅 특정 날짜 급식 상세 조회",
         "📋 데이터 전체 보기",
     ])
 
     # ---------------------------------------------------------
-    # Tab 1: 가독성이 개선된 묶은 가로 막대그래프
+    # Tab 1: 보기 옵션을 갖춘 고가독성 알레르기 그래프
     # ---------------------------------------------------------
     with tab1:
         st.subheader("학교별 알레르기 유발 식품 출현 빈도 비교")
@@ -227,16 +227,52 @@ else:
         if df_allergy.empty:
             st.info("해당 기간 내 감지된 알레르기 정보가 없습니다.")
         else:
+            # 1. 보기 옵션 필터 추가 (복잡도 해결)
+            col_filter1, col_filter2 = st.columns([2, 1])
+
+            with col_filter1:
+                view_mode = st.radio(
+                    "👀 그래프 보기 모드 선택:",
+                    [
+                        "🔥 가장 자주 나오는 TOP 5 식품만 보기",
+                        "🎯 특정 알레르기 식품 1개 선택 비교",
+                        "📜 전체 식품 보기 (넓은 간격)",
+                    ],
+                    horizontal=True,
+                )
+
+            # 데이터 그룹화
             df_counts = (
                 df_allergy.groupby(["알레르기식품", "학교명"])
                 .size()
                 .reset_index(name="출현횟수")
             )
 
-            # 가독성 개선: 수치 라벨 추가, 동적 높이 조절, 간격 넓히기
-            unique_items = df_counts["알레르기식품"].nunique()
-            chart_height = max(450, unique_items * 40)
+            # 모드별 데이터 필터링
+            if "TOP 5" in view_mode:
+                top_items = (
+                    df_counts.groupby("알레르기식품")["출현횟수"]
+                    .sum()
+                    .nlargest(5)
+                    .index
+                )
+                df_counts = df_counts[df_counts["알레르기식품"].isin(top_items)]
 
+            elif "1개 선택" in view_mode:
+                all_unique_items = sorted(df_counts["알레르기식품"].unique())
+                with col_filter2:
+                    selected_item = st.selectbox(
+                        "조회할 알레르기 식품:", all_unique_items
+                    )
+                df_counts = df_counts[df_counts["알레르기식품"] == selected_item]
+
+            # 2. 동적 높이 및 여백 계산 (막대가 붙는 현상 완벽 방지)
+            unique_items_count = df_counts["알레르기식품"].nunique()
+            chart_height = max(400, unique_items_count * 75)  # 1항목당 75px로 넉넉하게 배치
+
+            max_val = df_counts["출현횟수"].max() if not df_counts.empty else 5
+
+            # Plotly 가독성 극대화 차트 생성
             fig_h_bar = px.bar(
                 df_counts,
                 x="출현횟수",
@@ -245,28 +281,45 @@ else:
                 orientation="h",
                 barmode="group",
                 text="출현횟수",
-                title="<b>[알레르기 식품별 출현 횟수]</b> 막대 밖 숫자로 직관적 비교",
-                labels={"출현횟수": "출현 횟수(회)", "알레르기식품": "알레르기 유발 식품"},
+                title=f"<b>[알레르기 식품 비교]</b> {view_mode}",
+                labels={"출현횟수": "출현 횟수(회)", "알레르기식품": "알레르기 식품"},
                 height=chart_height,
-                template="plotly_white",
+                template="plotly_dark",
             )
 
-            # 라벨 위치 및 폰트 스타일 가독성 최적화
-            fig_h_bar.update_traces(textposition="outside", cliponaxis=False)
-            fig_h_bar.update_layout(
-                yaxis={"categoryorder": "total ascending"},
-                font=dict(size=13),
-                bargap=0.25,
-                bargroupgap=0.1,
-                legend=dict(
-                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-                ),
-                margin=dict(l=20, r=50, t=60, b=40),
+            # 막대 사이 여백(bargap) 및 텍스트 위치 가독성 최적화
+            fig_h_bar.update_traces(
+                textposition="outside",
+                cliponaxis=False,
+                textfont=dict(size=14, color="white"),
+                marker=dict(line=dict(width=1, color="rgba(255, 255, 255, 0.3)")),  # 막대 경계선 추가
             )
+
+            fig_h_bar.update_layout(
+                yaxis={"categoryorder": "total ascending", "tickfont": dict(size=14)},
+                xaxis=dict(
+                    range=[0, max_val * 1.25],  # 오른쪽에 25% 여유 공간 확보하여 수치 잘림 방지
+                    dtick=1,
+                    title_font=dict(size=14),
+                ),
+                font=dict(size=13),
+                bargap=0.45,       # 그룹 간 넓은 여백 (위아래 겹침 방지)
+                bargroupgap=0.15,  # 같은 그룹 막대 간 여백
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=13),
+                ),
+                margin=dict(l=30, r=80, t=60, b=40),
+            )
+
             st.plotly_chart(fig_h_bar, use_container_width=True)
 
     # ---------------------------------------------------------
-    # Tab 2: 가독성이 개선된 영양소 비교 그래프
+    # Tab 2: 영양소 비교 그래프
     # ---------------------------------------------------------
     with tab2:
         st.subheader("학교별 주요 비타민 & 피로회복 영양소 평균 제공량")
@@ -297,7 +350,7 @@ else:
             barmode="group",
             text="평균제공량",
             title="<b>[시험기간 피로회복 영양소 평균 제공량]</b>",
-            template="plotly_white",
+            template="plotly_dark",
             height=500,
         )
         fig_nut.update_traces(
@@ -305,7 +358,7 @@ else:
         )
         fig_nut.update_layout(
             font=dict(size=13),
-            bargap=0.2,
+            bargap=0.3,
             bargroupgap=0.1,
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
@@ -314,7 +367,7 @@ else:
         st.plotly_chart(fig_nut, use_container_width=True)
 
     # ---------------------------------------------------------
-    # Tab 3: 신규 기능 - 특정 날짜 급식 상세 조회
+    # Tab 3: 특정 날짜 급식 상세 조회
     # ---------------------------------------------------------
     with tab3:
         st.subheader("🔍 일별 급식 메뉴 & 알레르기 상세 조회")
@@ -326,7 +379,6 @@ else:
                 "조회할 학교를 선택하세요", options=df["학교명"].unique()
             )
 
-        # 선택한 학교의 급식 가능 날짜 목록
         school_dates = (
             df[df["학교명"] == selected_school]["급식일"]
             .dt.strftime("%Y-%m-%d")
@@ -338,7 +390,6 @@ else:
                 "조회할 날짜를 선택하세요", options=school_dates
             )
 
-        # 해당 데이터 필터링
         selected_meal = df[
             (df["학교명"] == selected_school)
             & (df["급식일"].dt.strftime("%Y-%m-%d") == selected_date_str)
