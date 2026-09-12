@@ -218,7 +218,7 @@ else:
     ])
 
     # ---------------------------------------------------------
-    # Tab 1: 가독성 최적화 막대그래프 + 원그래프(Pie Chart) 모음
+    # Tab 1: 막대그래프 + 원그래프(Pie Chart) 모음
     # ---------------------------------------------------------
     with tab1:
         st.subheader("학교별 알레르기 유발 식품 출현 빈도 및 비율 분석")
@@ -233,7 +233,6 @@ else:
         if df_allergy.empty:
             st.info("해당 기간 내 감지된 알레르기 정보가 없습니다.")
         else:
-            # 1. 보기 옵션 선택 필터
             col_filter1, col_filter2 = st.columns([3, 1])
 
             with col_filter1:
@@ -248,7 +247,6 @@ else:
                     horizontal=True,
                 )
 
-            # 데이터 그룹화
             df_counts = (
                 df_allergy.groupby(["알레르기식품", "학교명"])
                 .size()
@@ -256,13 +254,12 @@ else:
             )
 
             # ---------------------------------------------------------
-            # 🥧 [신규] 원그래프(Pie Chart) 모음 모드
+            # 🥧 원그래프(Pie Chart) 모음 모드 (오류 수정 완료)
             # ---------------------------------------------------------
             if "원그래프" in view_mode:
                 st.markdown("### 🥧 주요 알레르기 식품별 학교 비중 (원그래프 모음)")
-                st.caption("각 알레르기 식품(계란, 아황산류, 견과류 등)이 어느 학교 급식에 더 자주 나왔는지 비율과 횟수로 비교합니다.")
+                st.caption("각 알레르기 식품이 어느 학교 급식에 더 자주 나왔는지 비율과 횟수로 비교합니다.")
 
-                # 총 빈도가 높은 순으로 식품 정렬
                 top_items = (
                     df_counts.groupby("알레르기식품")["출현횟수"]
                     .sum()
@@ -270,13 +267,11 @@ else:
                     .index.tolist()
                 )
 
-                # 2열(2 Columns) 그리드로 원그래프 배치
                 grid_cols = st.columns(2)
 
                 for idx, item_name in enumerate(top_items):
                     sub_df = df_counts[df_counts["알레르기식품"] == item_name]
 
-                    # 원그래프(도넛 차트 형태) 생성
                     fig_pie = px.pie(
                         sub_df,
                         values="출현횟수",
@@ -286,8 +281,9 @@ else:
                         template="plotly_dark",
                         height=350,
                     )
+                    # Plotly 표준 textinfo 구문으로 수정
                     fig_pie.update_traces(
-                        textinfo="label+value (percent)",
+                        textinfo="label+value+percent",
                         textposition="inside",
                         insidetextorientation="radial",
                     )
@@ -297,7 +293,6 @@ else:
                         margin=dict(l=20, r=20, t=40, b=30),
                     )
 
-                    # 2개씩 번갈아가며 왼쪽/오른쪽 열에 출력
                     with grid_cols[idx % 2]:
                         st.plotly_chart(fig_pie, use_container_width=True)
 
