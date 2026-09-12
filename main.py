@@ -16,9 +16,10 @@ def load_data():
     # 장르(genre) 전처리: 세로막대(|)로 구분된 경우 첫 번째 장르만 추출
     df['genre'] = df['genre'].apply(lambda x: x.split('|')[0] if isinstance(x, str) else x)
     
-    # 트리맵 및 버블차트 에러 방지용 결측치(NaN) 처리
+    # 트리맵, 선버스트 등 계층 그래프 에러 방지용 결측치(NaN) 처리
     df['genre'] = df['genre'].fillna('기타장르').astype(str)
     df['movieNm'] = df['movieNm'].fillna('알수없음').astype(str)
+    df['nation'] = df['nation'].fillna('알수없음').astype(str)
     
     # 숫자형 데이터 변환 (빈칸이나 잘못된 문자는 0으로 처리)
     df['total_audi'] = pd.to_numeric(df['total_audi'], errors='coerce').fillna(0)
@@ -213,5 +214,29 @@ fig_bubble.update_traces(
 st.plotly_chart(fig_bubble, use_container_width=True)
 
 st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 원의 크기(첫 주 관객 수)가 클수록 최종 관객 수도 높은지(비례하는지), 혹은 첫 주만 반짝하고 멈춘 예외적인 영화가 있는지 등 핵심 정보 한 문장을 적어주세요.")
+
+st.divider()
+
+st.subheader("7. 제작 국가 및 장르별 영화 편수 (선버스트)")
+
+# 선버스트 차트에 영화 편수를 나타내기 위해 각 행을 1편으로 계산할 기준(movie_count) 추가
+df_sunburst = df.copy()
+df_sunburst['movie_count'] = 1
+
+# 플롯리 선버스트 차트 생성
+fig_sunburst = px.sunburst(
+    df_sunburst,
+    path=['nation', 'genre'],
+    values='movie_count',
+    title='제작 국가에서 장르로 이어지는 영화 편수'
+)
+
+fig_sunburst.update_traces(
+    hovertemplate="<b>%{label}</b><br>영화 편수: %{value}편<extra></extra>"
+)
+
+st.plotly_chart(fig_sunburst, use_container_width=True)
+
+st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 선버스트 차트를 통해 파악한 어느 국가의 영화가 가장 많이 개봉했는지, 혹은 특정 국가의 주력 장르가 무엇인지 등 핵심 정보 한 문장을 적어주세요.")
 
 st.divider()
