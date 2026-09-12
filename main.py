@@ -173,3 +173,52 @@ st.plotly_chart(fig3, use_container_width=True)
 
 # '이 그래프로 알 수 있는 것' 문구 자리
 st.info("💡 **이 그래프로 알 수 있는 것:** 명절, 공휴일, 혹은 특정 대작이 개봉한 주말 등 1년 중 사람들이 극장에 가장 많이 몰리는 시기를 파악할 수 있습니다.")
+
+# ==========================================
+# [구역 4] 최고 흥행작 TOP 10 누적 관객수 및 진입 일수 (가로 막대그래프)
+# ==========================================
+st.divider()
+st.header("4. 최고 흥행작 TOP 10 누적 관객수")
+st.markdown("전체 기간 동안 가장 많은 관객을 동원한 영화 10편을 순위대로 보여줍니다. 막대에 마우스를 올리면 10위권에 머문 날짜 수도 확인할 수 있습니다.")
+
+# 1. 영화별 총 관객수와 10위권 진입 일수 계산
+# 각 행이 하루 치 10위권 기록이므로, 행의 개수(count)가 곧 10위권 진입 일수가 됩니다.
+movie_stats = df.groupby('영화명').agg(
+    총관객수=('일관객', 'sum'),
+    진입일수=('날짜', 'count')
+).reset_index()
+
+# 2. 총관객수 기준 상위 10개 영화 추출
+top10_movies = movie_stats.nlargest(10, '총관객수')
+
+# 3. 플롯리 가로 막대그래프는 데이터의 아래쪽 행부터 위로 그려집니다.
+# 관객수가 가장 많은 영화가 맨 위에 오도록 데이터를 오름차순 정렬합니다.
+top10_movies = top10_movies.sort_values(by='총관객수', ascending=True)
+
+# 4. Plotly 가로 막대그래프 생성
+fig4 = px.bar(
+    top10_movies,
+    x="총관객수",
+    y="영화명",
+    orientation='h',
+    title="TOP 10 영화 누적 관객수 및 진입 일수",
+    custom_data=['진입일수'] # 툴팁에 사용할 추가 데이터 전달
+)
+
+# 5. 툴팁 및 레이아웃 다듬기
+# customdata[0]을 통해 전달받은 '진입일수'를 표시합니다.
+fig4.update_traces(
+    hovertemplate="<b>%{y}</b><br><b>총 관객수:</b> %{x:,.0f}명<br><b>10위권 진입 일수:</b> %{customdata[0]}일<extra></extra>",
+    marker_color="#457b9d" # 막대 색상 지정하여 시각적 안정감 부여
+)
+
+fig4.update_layout(
+    xaxis_title="총 관객수 (명)",
+    yaxis_title="영화명"
+)
+
+# 6. 그래프 출력
+st.plotly_chart(fig4, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 문구 자리
+st.info("💡 **이 그래프로 알 수 있는 것:** 단기간에 폭발적인 인기를 끌어 상위권을 차지한 영화와, 순위는 압도적이지 않아도 오랫동안 10위권에 머물러 누적 관객이 많은 영화를 비교해 볼 수 있습니다.")
