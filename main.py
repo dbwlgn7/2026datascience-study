@@ -8,14 +8,14 @@ import streamlit as st
 # 1. Streamlit 기본 페이지 설정
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="전국 학교 급식 알레르기 & 비타민 대시보드",
+    page_title="우리학교 급식 알리미",
     page_icon="🥗",
     layout="wide",
 )
 
-st.title("🥗 전국 학교 급식 알레르기 & 영양소 분석 대시보드")
+st.title("🥗 우리학교 급식 알리미")
 st.caption(
-    "선택한 학교들의 알레르기 유발 식품 및 비타민 제공량을 직관적으로 비교하고, 특정 날짜의 상세 식단을 조회합니다."
+    "선택한 학교들의 알레르기 유발 식품(막대/원그래프) 및 비타민 제공량을 직관적으로 비교하고, 특정 날짜의 상세 식단을 조회합니다."
 )
 
 # NEIS 알레르기 코드 매핑 (1~19번)
@@ -42,7 +42,7 @@ ALLERGY_DICT = {
 }
 
 # ---------------------------------------------------------
-# 2. 사이드바 - 학교 검색 및 조회 기간 설정
+# 2. 사이드바 - 학교 검색 및 기간 설정
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ 학교 검색 & 기간 설정")
 
@@ -153,7 +153,7 @@ def parse_nutrition(ntr_info_str):
 
 
 # ---------------------------------------------------------
-# 4. 데이터 로드
+# 4. 데이터 수집 실행
 # ---------------------------------------------------------
 user_school_inputs = [school_input_1, school_input_2, school_input_3]
 target_schools_info = []
@@ -196,6 +196,12 @@ if df.empty:
 else:
     df["급식일"] = pd.to_datetime(df["급식일"], format="%Y%m%d")
 
+    # API Key 미입력 안내 메시지
+    if not api_key:
+        st.info(
+            "💡 **안내:** API Key 미입력 시 NEIS 규정에 따라 **학교당 최근 5일 치 급식 데이터**만 불러옵니다. (더 긴 기간 분석을 원하시면 사이드바에 API Key를 입력하세요)"
+        )
+
     # 상단 요약 카드
     col1, col2, col3 = st.columns(3)
     col1.metric("조회된 학교 수", f"{len(df['학교명'].unique())}개교")
@@ -205,17 +211,17 @@ else:
     st.markdown("---")
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 알레르기 식품 빈도 (가독성 최적화)",
+        "📊 알레르기 식품 분석 (막대 & 원그래프)",
         "🍋 시험기간 영양소 비교",
         "📅 특정 날짜 급식 상세 조회",
         "📋 데이터 전체 보기",
     ])
 
     # ---------------------------------------------------------
-    # Tab 1: 보기 옵션을 갖춘 고가독성 알레르기 그래프
+    # Tab 1: 가독성 최적화 막대그래프 + 원그래프(Pie Chart) 모음
     # ---------------------------------------------------------
     with tab1:
-        st.subheader("학교별 알레르기 유발 식품 출현 빈도 비교")
+        st.subheader("학교별 알레르기 유발 식품 출현 빈도 및 비율 분석")
 
         allergy_rows = []
         for _, row in df.iterrows():
@@ -227,16 +233,17 @@ else:
         if df_allergy.empty:
             st.info("해당 기간 내 감지된 알레르기 정보가 없습니다.")
         else:
-            # 1. 보기 옵션 필터 추가 (복잡도 해결)
-            col_filter1, col_filter2 = st.columns([2, 1])
+            # 1. 보기 옵션 선택 필터
+            col_filter1, col_filter2 = st.columns([3, 1])
 
             with col_filter1:
                 view_mode = st.radio(
-                    "👀 그래프 보기 모드 선택:",
+                    "👀 차트 유형 및 보기 모드 선택:",
                     [
-                        "🔥 가장 자주 나오는 TOP 5 식품만 보기",
-                        "🎯 특정 알레르기 식품 1개 선택 비교",
-                        "📜 전체 식품 보기 (넓은 간격)",
+                        "🥧 식품별 학교 비율 모아보기 (원그래프 모음)",
+                        "🔥 가장 자주 나오는 TOP 5 식품만 보기 (막대)",
+                        "🎯 특정 알레르기 식품 1개 선택 비교 (막대)",
+                        "📜 전체 식품 보기 (막대)",
                     ],
                     horizontal=True,
                 )
@@ -248,75 +255,120 @@ else:
                 .reset_index(name="출현횟수")
             )
 
-            # 모드별 데이터 필터링
-            if "TOP 5" in view_mode:
+            # ---------------------------------------------------------
+            # 🥧 [신규] 원그래프(Pie Chart) 모음 모드
+            # ---------------------------------------------------------
+            if "원그래프" in view_mode:
+                st.markdown("### 🥧 주요 알레르기 식품별 학교 비중 (원그래프 모음)")
+                st.caption("각 알레르기 식품(계란, 아황산류, 견과류 등)이 어느 학교 급식에 더 자주 나왔는지 비율과 횟수로 비교합니다.")
+
+                # 총 빈도가 높은 순으로 식품 정렬
                 top_items = (
                     df_counts.groupby("알레르기식품")["출현횟수"]
                     .sum()
-                    .nlargest(5)
-                    .index
+                    .sort_values(ascending=False)
+                    .index.tolist()
                 )
-                df_counts = df_counts[df_counts["알레르기식품"].isin(top_items)]
 
-            elif "1개 선택" in view_mode:
-                all_unique_items = sorted(df_counts["알레르기식품"].unique())
-                with col_filter2:
-                    selected_item = st.selectbox(
-                        "조회할 알레르기 식품:", all_unique_items
+                # 2열(2 Columns) 그리드로 원그래프 배치
+                grid_cols = st.columns(2)
+
+                for idx, item_name in enumerate(top_items):
+                    sub_df = df_counts[df_counts["알레르기식품"] == item_name]
+
+                    # 원그래프(도넛 차트 형태) 생성
+                    fig_pie = px.pie(
+                        sub_df,
+                        values="출현횟수",
+                        names="학교명",
+                        title=f"<b>[{item_name}]</b> 학교별 출현 비율",
+                        hole=0.35,
+                        template="plotly_dark",
+                        height=350,
                     )
-                df_counts = df_counts[df_counts["알레르기식품"] == selected_item]
+                    fig_pie.update_traces(
+                        textinfo="label+value (percent)",
+                        textposition="inside",
+                        insidetextorientation="radial",
+                    )
+                    fig_pie.update_layout(
+                        showlegend=True,
+                        legend=dict(orientation="h", y=-0.1),
+                        margin=dict(l=20, r=20, t=40, b=30),
+                    )
 
-            # 2. 동적 높이 및 여백 계산 (막대가 붙는 현상 완벽 방지)
-            unique_items_count = df_counts["알레르기식품"].nunique()
-            chart_height = max(400, unique_items_count * 75)  # 1항목당 75px로 넉넉하게 배치
+                    # 2개씩 번갈아가며 왼쪽/오른쪽 열에 출력
+                    with grid_cols[idx % 2]:
+                        st.plotly_chart(fig_pie, use_container_width=True)
 
-            max_val = df_counts["출현횟수"].max() if not df_counts.empty else 5
+            # ---------------------------------------------------------
+            # 📊 막대그래프 모드들
+            # ---------------------------------------------------------
+            else:
+                if "TOP 5" in view_mode:
+                    top_items = (
+                        df_counts.groupby("알레르기식품")["출현횟수"]
+                        .sum()
+                        .nlargest(5)
+                        .index
+                    )
+                    df_counts = df_counts[df_counts["알레르기식품"].isin(top_items)]
 
-            # Plotly 가독성 극대화 차트 생성
-            fig_h_bar = px.bar(
-                df_counts,
-                x="출현횟수",
-                y="알레르기식품",
-                color="학교명",
-                orientation="h",
-                barmode="group",
-                text="출현횟수",
-                title=f"<b>[알레르기 식품 비교]</b> {view_mode}",
-                labels={"출현횟수": "출현 횟수(회)", "알레르기식품": "알레르기 식품"},
-                height=chart_height,
-                template="plotly_dark",
-            )
+                elif "1개 선택" in view_mode:
+                    all_unique_items = sorted(df_counts["알레르기식품"].unique())
+                    with col_filter2:
+                        selected_item = st.selectbox(
+                            "조회할 알레르기 식품:", all_unique_items
+                        )
+                    df_counts = df_counts[df_counts["알레르기식품"] == selected_item]
 
-            # 막대 사이 여백(bargap) 및 텍스트 위치 가독성 최적화
-            fig_h_bar.update_traces(
-                textposition="outside",
-                cliponaxis=False,
-                textfont=dict(size=14, color="white"),
-                marker=dict(line=dict(width=1, color="rgba(255, 255, 255, 0.3)")),  # 막대 경계선 추가
-            )
+                unique_items_count = df_counts["알레르기식품"].nunique()
+                chart_height = max(400, unique_items_count * 75)
+                max_val = df_counts["출현횟수"].max() if not df_counts.empty else 5
 
-            fig_h_bar.update_layout(
-                yaxis={"categoryorder": "total ascending", "tickfont": dict(size=14)},
-                xaxis=dict(
-                    range=[0, max_val * 1.25],  # 오른쪽에 25% 여유 공간 확보하여 수치 잘림 방지
-                    dtick=1,
-                    title_font=dict(size=14),
-                ),
-                font=dict(size=13),
-                bargap=0.45,       # 그룹 간 넓은 여백 (위아래 겹침 방지)
-                bargroupgap=0.15,  # 같은 그룹 막대 간 여백
-                legend=dict(
+                fig_h_bar = px.bar(
+                    df_counts,
+                    x="출현횟수",
+                    y="알레르기식품",
+                    color="학교명",
                     orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1,
-                    font=dict(size=13),
-                ),
-                margin=dict(l=30, r=80, t=60, b=40),
-            )
+                    barmode="group",
+                    text="출현횟수",
+                    title=f"<b>[알레르기 식품 비교]</b> {view_mode}",
+                    labels={"출현횟수": "출현 횟수(회)", "알레르기식품": "알레르기 식품"},
+                    height=chart_height,
+                    template="plotly_dark",
+                )
 
-            st.plotly_chart(fig_h_bar, use_container_width=True)
+                fig_h_bar.update_traces(
+                    textposition="outside",
+                    cliponaxis=False,
+                    textfont=dict(size=14, color="white"),
+                    marker=dict(line=dict(width=1, color="rgba(255, 255, 255, 0.3)")),
+                )
+
+                fig_h_bar.update_layout(
+                    yaxis={"categoryorder": "total ascending", "tickfont": dict(size=14)},
+                    xaxis=dict(
+                        range=[0, max_val * 1.25],
+                        dtick=1,
+                        title_font=dict(size=14),
+                    ),
+                    font=dict(size=13),
+                    bargap=0.45,
+                    bargroupgap=0.15,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1,
+                        font=dict(size=13),
+                    ),
+                    margin=dict(l=30, r=80, t=60, b=40),
+                )
+
+                st.plotly_chart(fig_h_bar, use_container_width=True)
 
     # ---------------------------------------------------------
     # Tab 2: 영양소 비교 그래프
