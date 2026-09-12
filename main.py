@@ -111,3 +111,65 @@ st.plotly_chart(fig2, use_container_width=True)
 
 # '이 그래프로 알 수 있는 것' 문구 자리
 st.info("💡 **이 그래프로 알 수 있는 것:** 총 관객수 상위 5개 영화들의 흥행 패턴 차이(예: 초반에 몰리는 영화 vs 꾸준히 관객을 유지하는 영화)를 한눈에 비교할 수 있습니다.")
+
+# ==========================================
+# [구역 3] 날짜별 극장가 총 관객수 변화 (영역 그래프)
+# ==========================================
+st.divider()
+st.header("3. 날짜별 극장가 총 관객수 변화")
+st.markdown("매일 10위권 영화들의 일일 관객수를 모두 합산하여, 극장가 전체의 방문객 추이를 영역 그래프로 살펴봅니다. 특히 관객이 가장 많았던 3일을 강조하여 보여줍니다.")
+
+# 1. 날짜별 '일관객' 합계 계산
+daily_total = df.groupby('날짜')['일관객'].sum().reset_index()
+
+# 2. Plotly 영역 그래프 생성
+fig3 = px.area(
+    daily_total,
+    x="날짜",
+    y="일관객",
+    title="날짜별 10위권 일일 관객수 합계"
+)
+
+# 3. 툴팁 및 레이아웃 다듬기
+fig3.update_traces(
+    hovertemplate="<b>날짜:</b> %{x|%Y년 %m월 %d일}<br><b>총 일관객:</b> %{y:,.0f}명"
+)
+fig3.update_layout(
+    xaxis_title="날짜",
+    yaxis_title="총 일일 관객수 (명)",
+    hovermode="x unified"
+)
+
+# 4. 관객수 합계가 가장 컸던 날 Top 3 추출
+top3_days = daily_total.nlargest(3, '일관객')
+
+# 5. Top 3 날짜에 주석(Annotation) 추가하기
+for index, row in top3_days.iterrows():
+    # 날짜를 읽기 쉬운 문자열 형태로 변환
+    date_str = row['날짜'].strftime('%Y-%m-%d')
+    audience_cnt = row['일관객']
+    
+    # 그래프에 화살표와 텍스트 추가
+    fig3.add_annotation(
+        x=row['날짜'],
+        y=row['일관객'],
+        text=f"🏆 {date_str}<br>({audience_cnt:,.0f}명)",
+        showarrow=True,
+        arrowhead=2,          # 화살표 머리 모양
+        arrowsize=1,          # 화살표 크기
+        arrowwidth=2,         # 화살표 두께
+        arrowcolor="#E36414", # 화살표 색상
+        ax=0,                 # 텍스트의 x축 위치 조정 (0은 화살표와 수직)
+        ay=-45,               # 텍스트의 y축 위치 조정 (-45는 위로 띄움)
+        font=dict(color="#E36414", size=12, family="Arial"),
+        bgcolor="white",
+        bordercolor="#E36414",
+        borderwidth=1,
+        borderpad=4
+    )
+
+# 6. 그래프 출력
+st.plotly_chart(fig3, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 문구 자리
+st.info("💡 **이 그래프로 알 수 있는 것:** 명절, 공휴일, 혹은 특정 대작이 개봉한 주말 등 1년 중 사람들이 극장에 가장 많이 몰리는 시기를 파악할 수 있습니다.")
