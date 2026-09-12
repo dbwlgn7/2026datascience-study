@@ -55,6 +55,26 @@ st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 도넛 그래�
 # 구역 나누기 (선 긋기)
 st.divider()
 
-# 이후 추가될 다른 그래프들을 위한 자리 (필요 시 아래에 이어서 작성)
-# st.subheader("2. 다음 그래프 제목")
-# ...
+st.subheader("2. 장르별 총 관객 수 (트리맵)")
+
+# 플롯리 트리맵 생성: 장르 안에 영화가 포함되도록 계층 구조 설정 (크기는 총 관객 수)
+fig_treemap = px.treemap(
+    df,
+    path=['genre', 'movieNm'],
+    values='total_audi',
+    title='장르 및 영화별 총 관객 수'
+)
+
+# 칸에 마우스를 올렸을 때 이름(영화명 또는 장르명)과 총 관객 수가 보이도록 호버 템플릿 설정
+fig_treemap.update_traces(
+    hovertemplate="<b>%{label}</b><br>총 관객 수: %{value:,}명<extra></extra>"
+)
+
+# 그래프 화면에 출력
+st.plotly_chart(fig_treemap, use_container_width=True)
+
+# '이 그래프로 알 수 있는 것' 한 문장 자리 마련
+st.info("**💡 이 그래프로 알 수 있는 것:** 이곳에 트리맵을 통해 파악한 가장 많은 관객을 동원한 장르나 특정 영화 등 핵심 정보 한 문장을 적어주세요.")
+
+# 구역 나누기 (선 긋기)
+st.divider()
