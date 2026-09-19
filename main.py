@@ -1,171 +1,219 @@
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+import math
 import streamlit as st
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, r2_score
+import pandas as pd
+import numpy as np
+import plotly.express as px
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
 
-st.set_page_config(page_title="영화 흥행 예측기", layout="wide")
+# 1. 페이지 설정 및 브라우저 탭 제목 설정
+st.set_page_config(
+    page_title="영화 유형 나누기",
+    page_icon="🎬",
+    layout="wide"
+)
 
+# 2. 메인 타이틀
+st.title("🎬 영화 유형 나누기")
 
-# 1. 데이터 불러오기
+# 3. 데이터 로드 및 전처리 함수
 @st.cache_data
-def load_data():
-    daily_url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/kobis_daily.csv"
-    movies_url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/kobis_movies.csv"
+def load_and_preprocess_data():
+    url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/kobis_movies.csv"
+    raw_df = pd.read_csv(url, encoding="utf-8")
+    
+    total_raw_count = len(raw_df)
+    
+    # 필수 열 유효성 검사 및 결측치/0 값 제거
+    req_cols = ['first_scrn', 'total_audi', 'days_in_top10', 'first_week_audi', 'movieNm']
+    clean_df = raw_df.dropna(subset=req_cols).copy()
+    
+    # 첫 주 관객이 0이거나 스크린 수/누적 관객이 0 이하인 데이터 제거 (로그 계산 및 롱런지수 계산 유효성)
+    clean_df = clean_df[
+        (clean_df['first_week_audi'] > 0) & 
+        (clean_df['first_scrn'] > 0) & 
+        (clean_df['total_audi'] > 0)
+    ].copy()
+    
+    # 파생 속성 생성
+    clean_df['log_first_scrn'] = np.log10(clean_df['first_scrn'])
+    clean_df['log_total_audi'] = np.log10(clean_df['total_audi'])
+    clean_df['long_run_index'] = (clean_df['total_audi'] / clean_df['first_week_audi']).clip(upper=20)
+    
+    return raw_df, clean_df, total_raw_count
 
-    df_daily = pd.read_csv(daily_url, encoding="utf-8")
-    df_movies = pd.read_csv(movies_url, encoding="utf-8")
+# 데이터 로드
+raw_df, df, total_raw_count = load_and_preprocess_data()
+filtered_count = len(df)
 
-    return df_daily, df_movies
+# 4. 전체 편수 및 분석 대상 편수 표시 (한 줄)
+st.markdown(f"**전체 영화 수:** {total_raw_count:,}편 &nbsp;|&nbsp; **분석 대상 영화 수:** {filtered_count:,}편")
+st.divider()
 
-
-df_daily, df_movies = load_data()
-
-# 기준 기간 추출
-dates = df_daily["날짜"].astype(str)
-min_date = f"{dates.min()[:4]}-{dates.min()[4:6]}-{dates.min()[6:]}"
-max_date = f"{dates.max()[:4]}-{dates.max()[4:6]}-{dates.max()[6:]}"
-
-st.title("🎬 영화 흥행 예측기 (다중 회귀 분석)")
-st.info(f"📅 **박스오피스 기준 기간:** {min_date} ~ {max_date}")
-
-# 2. 상위 10개 행 출력
-st.subheader("📋 영화별 데이터 (상위 10행)")
-st.dataframe(df_movies.head(10), use_container_width=True)
-
-# 3. 데이터 정렬 및 분할 (영화코드 순 정렬 후 10편 중 앞 3편 테스트)
-df_movies = df_movies.sort_values("movieCd").reset_index(drop=True)
-test_mask = (df_movies.index % 10) < 3
-
-train_count = (~test_mask).sum()
-test_count = test_mask.sum()
-
-# 4. 예측 변수 선택 (체크박스)
-st.subheader("⚙️ 모델 학습 변수 선택")
-
-candidate_features = {
-    "first_scrn": "첫 관측일 스크린수",
-    "first_show": "첫 관측일 상영횟수",
-    "peak": "성수기 개봉 여부 (1/0)",
-    "first_week_audi": "첫 주 관객수",
-    "days_in_top10": "10위권 유지 일수",
-    "genre": "장르",
-    "nation": "국가",
+# 속성 매핑 (화면 표시 이름 -> 내부 컬럼 이름)
+feature_map = {
+    "스크린 수 (상용로그)": "log_first_scrn",
+    "누적 관객 (상용로그)": "log_total_audi",
+    "10위권 일수": "days_in_top10",
+    "롱런 지수": "long_run_index"
 }
 
-selected_features = []
-cols = st.columns(len(candidate_features))
+# 5. 군집화에 사용할 속성 선택 UI (기본 4개 모두 선택)
+st.subheader("1. 군집화 속성 선택")
+selected_labels = st.multiselect(
+    "군집화(K-Means)에 사용할 속성을 선택하세요 (최소 2개 이상):",
+    options=list(feature_map.keys()),
+    default=list(feature_map.keys())
+)
 
-for idx, (col, label) in enumerate(candidate_features.items()):
-    with cols[idx]:
-        # 기본 선택값 설정
-        default_val = col in [
-            "first_scrn",
-            "first_week_audi",
-            "days_in_top10",
-            "peak",
-        ]
-        if st.checkbox(f"{label}\n(`{col}`)", value=default_val):
-            selected_features.append(col)
-
-if not selected_features:
-    st.warning("⚠️ 최소 하나 이상의 변수를 선택해 주세요.")
+# 속성이 2개 미만일 경우 처리
+if len(selected_labels) < 2:
+    st.warning("⚠️ 군집화를 수행하려면 속성을 2개 이상 선택해야 합니다.")
     st.stop()
 
-# 5. 전처리 및 모델 학습
-X_raw = df_movies[selected_features].fillna(0)
-# 범주형 변수가 선택된 경우 원-핫 인코딩 처리
-X = pd.get_dummies(X_raw, drop_first=True)
-y = df_movies["total_audi"]
+# 6. 데이터 표준화 및 K-평균 군집화 (k=3, random_state 고정)
+selected_cols = [feature_map[label] for label in selected_labels]
 
-X_train, X_test = X[~test_mask], X[test_mask]
-y_train, y_test = y[~test_mask], y[test_mask]
+scaler = StandardScaler()
+scaled_features = scaler.fit_transform(df[selected_cols])
 
-model = LinearRegression()
-model.fit(X_train, y_train)
+kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+df['raw_cluster'] = kmeans.fit_predict(scaled_features)
 
-y_pred = model.predict(X_test)
+# 누적 관객 평균(원래 단위)이 큰 순서대로 ㉮, ㉯, ㉰ 부여
+cluster_audi_mean = df.groupby('raw_cluster')['total_audi'].mean()
+sorted_raw_clusters = cluster_audi_mean.sort_values(ascending=False).index.tolist()
 
-# 평가 지표 계산
-r2 = r2_score(y_test, y_pred)
-mae = mean_absolute_error(y_test, y_pred)
+label_mapping = {
+    sorted_raw_clusters[0]: '㉮',
+    sorted_raw_clusters[1]: '㉯',
+    sorted_raw_clusters[2]: '㉰'
+}
 
-# 6. 학습 정보 및 평가 결과 출력
-st.markdown("---")
-st.subheader("📊 모델 평가 및 학습 정보")
+df['cluster'] = df['raw_cluster'].map(label_mapping)
+df['cluster'] = pd.Categorical(df['cluster'], categories=['㉮', '㉯', '㉰'], ordered=True)
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("학습 영화 수", f"{train_count} 편")
-col2.metric("평가(테스트) 영화 수", f"{test_count} 편")
-col3.metric("결정계수 (R² Score)", f"{r2:.4f}")
-col4.metric("평균 절대 오차 (MAE)", f"{mae:,.0f} 명")
+# 시각화 색상 설정
+cluster_colors = {'㉮': '#EF553B', '㉯': '#636EFA', '㉰': '#00CC96'}
 
-# 7. 시각화 (Plotly 산점도)
-st.subheader("📈 실제 vs 예측 관객 수 (로그 축)")
+# 7. 2차원 산점도
+st.divider()
+st.subheader("2. 2차원 산점도")
 
-# 1,000명 미만 예측 영화 처리
-under_1000_mask = y_pred < 1000
-under_1000_count = np.sum(under_1000_mask)
+col1, col2 = st.columns(2)
+with col1:
+    x_label = st.selectbox("2D X축 속성 선택", options=list(feature_map.keys()), index=0)
+with col2:
+    y_label = st.selectbox("2D Y축 속성 선택", options=list(feature_map.keys()), index=1)
 
-# 그래프 시각화용 예측값 (1,000 미만은 1,000으로 보정하여 바닥에 표시)
-y_pred_plot = np.where(y_pred < 1000, 1000, y_pred)
+x_col = feature_map[x_label]
+y_col = feature_map[y_label]
 
-plot_df = pd.DataFrame(
-    {
-        "영화명": df_movies.loc[test_mask, "movieNm"],
-        "실제 관객수": y_test,
-        "예측 관객수(원래)": y_pred,
-        "예측 관객수(표시용)": y_pred_plot,
-    }
+fig_2d = px.scatter(
+    df,
+    x=x_col,
+    y=y_col,
+    color='cluster',
+    hover_name='movieNm',
+    hover_data={
+        'cluster': True,
+        'first_scrn': ':,',
+        'total_audi': ':,',
+        'days_in_top10': ':.1f',
+        'long_run_index': ':.2f'
+    },
+    labels={
+        x_col: x_label,
+        y_col: y_label,
+        'cluster': '유형 (묶음)'
+    },
+    color_discrete_map=cluster_colors,
+    category_orders={'cluster': ['㉮', '㉯', '㉰']},
+    title=f"2차원 산점도 ({x_label} vs {y_label})"
 )
+fig_2d.update_traces(marker=dict(size=6, opacity=0.8))
+st.plotly_chart(fig_2d, use_container_width=True)
 
-fig = go.Figure()
+# 8. 3차원 산점도
+st.divider()
+st.subheader("3. 3차원 산점도")
 
-# 산점도 추가
-fig.add_trace(
-    go.Scatter(
-        x=plot_df["실제 관객수"],
-        y=plot_df["예측 관객수(표시용)"],
-        mode="markers",
-        text=plot_df["영화명"],
-        hovertemplate="<b>%{text}</b><br>실제 관객: %{x:,.0f}명<br>예측 관객: %{customdata:,.0f}명<extra></extra>",
-        customdata=plot_df["예측 관객수(원래)"],
-        name="테스트 영화",
-        marker=dict(size=8, color="#1f77b4", opacity=0.7),
-    )
-)
-
-# 실제 = 예측 대각선 추가
-min_val = min(y_test.min(), 1000)
-max_val = max(y_test.max(), y_pred_plot.max())
-
-fig.add_trace(
-    go.Scatter(
-        x=[min_val, max_val],
-        y=[min_val, max_val],
-        mode="lines",
-        name="기준선 (실제 = 예측)",
-        line=dict(color="red", dash="dash"),
-    )
-)
-
-# 축 설정 (로그 축)
-fig.update_xaxes(type="log", title="실제 총 관객 수 (로그 축)")
-fig.update_yaxes(type="log", title="예측 총 관객 수 (로그 축)")
-
-fig.update_layout(
-    height=600,
-    hovermode="closest",
-    legend=dict(x=0.01, y=0.99),
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-if under_1000_count > 0:
-    st.info(
-        f"💡 예측 관객 수가 **1,000명 미만**으로 산출된 영화는 총 **{under_1000_count}편**이며, 그래프 바닥(Y축 1,000 위치)에 표시되었습니다."
-    )
+if len(selected_labels) < 3:
+    st.info("💡 3차원 산점도를 그리려면 위에서 군집화 속성을 3개 이상 선택해 주세요.")
 else:
-    st.info("💡 예측 관객 수가 1,000명 미만인 영화가 없습니다.")
+    col_x, col_y, col_z = st.columns(3)
+    with col_x:
+        x_3d_label = st.selectbox("3D X축 속성 선택", options=selected_labels, index=0)
+    with col_y:
+        y_3d_label = st.selectbox("3D Y축 속성 선택", options=selected_labels, index=1 if len(selected_labels) > 1 else 0)
+    with col_z:
+        z_3d_label = st.selectbox("3D Z축 속성 선택", options=selected_labels, index=2 if len(selected_labels) > 2 else 0)
+
+    fig_3d = px.scatter_3d(
+        df,
+        x=feature_map[x_3d_label],
+        y=feature_map[y_3d_label],
+        z=feature_map[z_3d_label],
+        color='cluster',
+        hover_name='movieNm',
+        hover_data={
+            'cluster': True,
+            'first_scrn': ':,',
+            'total_audi': ':,',
+            'days_in_top10': ':.1f',
+            'long_run_index': ':.2f'
+        },
+        labels={
+            feature_map[x_3d_label]: x_3d_label,
+            feature_map[y_3d_label]: y_3d_label,
+            feature_map[z_3d_label]: z_3d_label,
+            'cluster': '유형 (묶음)'
+        },
+        color_discrete_map=cluster_colors,
+        category_orders={'cluster': ['㉮', '㉯', '㉰']},
+        title="3차원 산점도 (마우스로 드래그하여 회전할 수 있습니다)"
+    )
+    fig_3d.update_traces(marker=dict(size=3, opacity=0.8))
+    st.plotly_chart(fig_3d, use_container_width=True)
+
+# 9. 묶음별 영화 편수 및 속성 평균 표 (원래 단위)
+st.divider()
+st.subheader("4. 묶음(유형)별 통계 요약")
+
+summary_df = df.groupby('cluster', observed=False).agg(
+    영화_편수=('movieNm', 'count'),
+    평균_스크린_수=('first_scrn', 'mean'),
+    평균_누적_관객=('total_audi', 'mean'),
+    평균_10위권_일수=('days_in_top10', 'mean'),
+    평균_롱런_지수=('long_run_index', 'mean')
+).reset_index()
+
+summary_df.columns = [
+    "유형", "영화 편수", "스크린 수 평균", "누적 관객 평균", "10위권 일수 평균", "롱런 지수 평균"
+]
+
+# 서식 적용
+formatted_summary = summary_df.copy()
+formatted_summary["영화 편수"] = formatted_summary["영화 편수"].map("{:,}편".format)
+formatted_summary["스크린 수 평균"] = formatted_summary["스크린 수 평균"].map("{:,.1f}개".format)
+formatted_summary["누적 관객 평균"] = formatted_summary["누적 관객 평균"].map("{:,.0f}명".format)
+formatted_summary["10위권 일수 평균"] = formatted_summary["10위권 일수 평균"].map("{:.1f}일".format)
+formatted_summary["롱런 지수 평균"] = formatted_summary["롱런 지수 평균"].map("{:.2f}".format)
+
+st.dataframe(formatted_summary, use_container_width=True)
+
+# 10. 묶음별 누적 관객 탑 5 영화
+st.divider()
+st.subheader("5. 묶음(유형)별 누적 관객 TOP 5 영화")
+
+top5_cols = st.columns(3)
+clusters = ['㉮', '㉯', '㉰']
+
+for idx, cluster in enumerate(clusters):
+    with top5_cols[idx]:
+        st.markdown(f"### 유형 **{cluster}**")
+        cluster_movies = df[df['cluster'] == cluster].sort_values(by='total_audi', ascending=False).head(5)
+        
+        for rank, (_, row) in enumerate(cluster_movies.iterrows(), 1):
+            st.markdown(f"**{rank}. {row['movieNm']}**")
+            st.caption(f"관객 수: {row['total_audi']:,}명 | 스크린: {row['first_scrn']:,}개")
