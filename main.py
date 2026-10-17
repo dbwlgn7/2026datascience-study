@@ -44,6 +44,7 @@ def 홈_화면():
     st.Page("pages/1_탐색.py", title="1. 데이터 탐색", icon="🔎"),
     st.Page("pages/2_분류_모델.py", title="2. 분류 모델", icon="🔎"),
     st.Page("pages/3_채점표.py", title="3. 채점표", icon="🔎"),
+    st.Page("pages/4_전처리.py", title="3. 전처리", icon="🔎"),
 ])
 
 페이지.run()
