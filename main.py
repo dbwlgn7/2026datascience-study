@@ -1,75 +1,48 @@
+# main.py — 뇌졸중 예측 실습실: 이 데이터가 무엇인지 소개하는 첫 화면
+
 import streamlit as st
-import pandas as pd
 
-# 브라우저 탭 및 앱 상단 설정
-st.set_page_config(page_title="뇌졸중 예측 실습실", page_icon="🩺", layout="wide")
+st.set_page_config(
+    page_title="뇌졸중 예측 실습실",
+    page_icon="🩺",
+    layout="wide"
+)
 
-st.title("🩺 뇌졸중 예측 실습실")
-st.markdown("---")
 
-st.subheader("데이터 소개")
+def 홈_화면():
+    # 기존 main.py의 데이터 읽기 및 화면 표시 코드를
+    # 전부 이 함수 안에 넣으세요.
+    import pandas as pd
 
-# 데이터 로드
-@st.cache_data
-def load_data():
-    url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/stroke.csv"
-    df = pd.read_csv(url, encoding="utf-8")
-    return df
+    st.title("🩺 뇌졸중 예측 실습실")
+    st.write(
+        "건강 기록 5,110명분을 읽어 옵니다. "
+        "왼쪽 메뉴에서 페이지를 넘기며 데이터를 탐색하고, "
+        "모델을 만들고, 채점합니다."
+    )
 
-df = load_data()
+    데이터주소 = (
+        "https://raw.githubusercontent.com/"
+        "greatsong/modudata/main/data/stroke.csv"
+    )
 
-# 1. 4개의 큰 숫자 카드 (지표)
-col1, col2, col3, col4 = st.columns(4)
+    @st.cache_data
+    def 데이터_읽기():
+        return pd.read_csv(데이터주소, encoding="utf-8")
 
-total_rows = len(df)
-total_cols = len(df.columns)
-stroke_patients = df['stroke'].sum()
-stroke_ratio = (stroke_patients / total_rows) * 100
+    df = 데이터_읽기()
 
-with col1:
-    st.metric("전체 사람 수", f"{total_rows:,}명")
-with col2:
-    st.metric("데이터 열 개수", f"{total_cols}개")
-with col3:
-    st.metric("뇌졸중(stroke=1) 발생 수", f"{stroke_patients:,}명")
-with col4:
-    st.metric("뇌졸중 발생 비율", f"{stroke_ratio:.2f}%")
+    칸1, 칸2, 칸3, 칸4 = st.columns(4)
+    칸1.metric("전체 사람 수", f"{len(df):,}명")
+    칸2.metric("열 개수", f"{df.shape[1]}개")
+    칸3.metric("뇌졸중을 겪은 사람", f"{int(df['stroke'].sum()):,}명")
+    칸4.metric("그 비율", f"{df['stroke'].mean() * 100:.2f}%")
 
-st.markdown("---")
 
-# 2. 열 이름, 우리말 뜻, 값의 종류, 빈 값 개수 표
-st.subheader("데이터 변수 설명표")
+페이지 = st.navigation([
+    st.Page(홈_화면, title="실습실 홈", icon="🏠", default=True),
+    st.Page("pages/1_탐색.py", title="1. 데이터 탐색", icon="🔎"),
+    st.Page("pages/2_분류_모델.py", title="2. 분류 모델", icon="🔎"),
+])
 
-# 값의 종류 파악 로직
-value_types = []
-for col in df.columns:
-    if df[col].nunique() <= 10:
-        vals = ", ".join(df[col].dropna().unique().astype(str))
-        value_types.append(f"범주형: {vals}")
-    else:
-        if pd.api.types.is_numeric_dtype(df[col]):
-            value_types.append("수치형 (연속형 데이터)")
-        else:
-            value_types.append("문자형 데이터")
-
-info_df = pd.DataFrame({
-    "열 이름": df.columns,
-    "우리말 뜻": ["" for _ in range(total_cols)], # 직접 채워 넣을 수 있게 빈칸 처리
-    "값의 종류": value_types,
-    "빈 값(결측치) 개수": df.isnull().sum().values
-})
-
-# 표 출력
-st.dataframe(info_df, use_container_width=True)
-
-st.markdown("---")
-
-# 3. 데이터 처음 5줄
-st.subheader("데이터 미리보기")
-st.dataframe(df.head(5), use_container_width=True)
-
-st.markdown("---")
-
-# 4. 데이터 출처 (교재 보고 적을 자리)
-st.subheader("데이터 출처")
-st.info("교재를 참고하여 이곳에 데이터 출처를 적어보세요.")
+페이지.run()
