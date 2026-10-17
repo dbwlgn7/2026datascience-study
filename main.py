@@ -46,5 +46,5 @@ def 홈_화면():
     st.Page("pages/3_채점표.py", title="3. 채점표", icon="🔎"),
     st.Page("pages/4_전처리.py", title="4. 전처리", icon="🔎"),
     st.Page("pages/5_내가_만든_모델_소개.py", title="5. 모델", icon="🔎"),
-]
+])
 페이지.run()
